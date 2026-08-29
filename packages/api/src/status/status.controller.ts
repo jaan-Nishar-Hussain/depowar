@@ -1,11 +1,11 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Inject, Query } from '@nestjs/common';
 import { stringifyBigInts } from '../common/serialize';
 import { Client, Scopes, type ClientContext } from '../auth/decorators';
 import { StatusService } from './status.service';
 
 @Controller('status')
 export class StatusController {
-  constructor(private readonly service: StatusService) {}
+  constructor(@Inject(StatusService) private readonly service: StatusService) {}
 
   @Get()
   @Scopes('quote', 'deposits')

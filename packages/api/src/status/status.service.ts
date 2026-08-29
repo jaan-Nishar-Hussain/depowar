@@ -1,10 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PayMeshError } from '../common/errors';
 
 @Injectable()
 export class StatusService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   async get(clientId: string, depositId: string): Promise<unknown> {
     const deposit = await this.prisma.depositIntent.findFirst({

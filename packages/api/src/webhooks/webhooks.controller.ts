@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Inject, Param, Post } from '@nestjs/common';
 import { ZodPipe } from '../common/zod.pipe';
 import { Client, Scopes, type ClientContext } from '../auth/decorators';
 import { CreateWebhookSchema, type CreateWebhookDto } from './dto';
@@ -6,7 +6,7 @@ import { WebhooksService } from './webhooks.service';
 
 @Controller('webhooks')
 export class WebhooksController {
-  constructor(private readonly service: WebhooksService) {}
+  constructor(@Inject(WebhooksService) private readonly service: WebhooksService) {}
 
   @Post()
   @Scopes('webhooks')

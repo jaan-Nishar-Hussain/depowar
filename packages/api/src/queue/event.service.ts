@@ -18,8 +18,8 @@ export type LifecycleEventType =
 @Injectable()
 export class EventService {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly queue: QueueService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(QueueService) private readonly queue: QueueService,
   ) {}
 
   async emit(

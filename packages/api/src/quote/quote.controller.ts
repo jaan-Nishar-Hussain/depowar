@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Post, Query } from '@nestjs/common';
 import { ZodPipe } from '../common/zod.pipe';
 import { stringifyBigInts } from '../common/serialize';
 import { Client, Scopes, type ClientContext } from '../auth/decorators';
@@ -7,7 +7,7 @@ import { QuoteService } from './quote.service';
 
 @Controller()
 export class QuoteController {
-  constructor(private readonly service: QuoteService) {}
+  constructor(@Inject(QuoteService) private readonly service: QuoteService) {}
 
   @Get('quote')
   @Scopes('quote')

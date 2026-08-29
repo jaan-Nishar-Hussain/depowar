@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Put } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Put } from '@nestjs/common';
 import { ZodPipe } from '../common/zod.pipe';
 import { stringifyBigInts } from '../common/serialize';
 import { Client, Scopes, type ClientContext } from '../auth/decorators';
@@ -7,7 +7,7 @@ import { RecipientsService } from './recipients.service';
 
 @Controller('recipients')
 export class RecipientsController {
-  constructor(private readonly service: RecipientsService) {}
+  constructor(@Inject(RecipientsService) private readonly service: RecipientsService) {}
 
   @Get(':id')
   @Scopes('recipients')

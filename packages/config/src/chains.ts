@@ -36,7 +36,7 @@ export function listChains(): ChainInfo[] {
     {
       id: 11155111,
       name: 'Ethereum Sepolia',
-      rpcUrl: env.ALCHEMY_SEPOLIA_RPC || env.ANVIL_RPC_URL,
+      rpcUrl: env.INFURA_SEPOLIA_RPC || env.ALCHEMY_SEPOLIA_RPC || env.ANVIL_RPC_URL,
       explorerUrl: 'https://sepolia.etherscan.io',
       nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
       testnet: true,
@@ -44,17 +44,17 @@ export function listChains(): ChainInfo[] {
     {
       id: 84532,
       name: 'Base Sepolia',
-      rpcUrl: env.ALCHEMY_BASE_SEPOLIA_RPC || env.ANVIL_RPC_URL,
+      rpcUrl: env.ALCHEMY_BASE_SEPOLIA_RPC || env.BASE_SEPOLIA_RPC || env.ANVIL_RPC_URL,
       explorerUrl: 'https://sepolia.basescan.org',
       nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
       testnet: true,
     },
     {
-      id: 421614,
-      name: 'Arbitrum Sepolia',
-      rpcUrl: env.ALCHEMY_ARBITRUM_SEPOLIA_RPC || env.ANVIL_RPC_URL,
-      explorerUrl: 'https://sepolia.arbiscan.io',
-      nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+      id: 80002,
+      name: 'Polygon Amoy',
+      rpcUrl: env.POLYGON_AMOY_RPC || env.ANVIL_RPC_URL,
+      explorerUrl: 'https://amoy.polygonscan.com',
+      nativeCurrency: { name: 'POL', symbol: 'POL', decimals: 18 },
       testnet: true,
     },
   ];

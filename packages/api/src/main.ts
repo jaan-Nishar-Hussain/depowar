@@ -1,9 +1,14 @@
 import 'reflect-metadata';
+import path from 'node:path';
+import { config as loadDotenv } from 'dotenv';
 import { NestFactory } from '@nestjs/core';
 import { loadEnv } from '@paymesh/config';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/exception.filter';
 import { RequestIdMiddleware } from './common/request-id.middleware';
+
+// Load the repo-root .env so `cp .env.example .env` works from the monorepo root.
+loadDotenv({ path: path.resolve(__dirname, '..', '..', '..', '.env') });
 
 async function bootstrap(): Promise<void> {
   const env = loadEnv();

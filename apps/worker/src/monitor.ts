@@ -236,7 +236,13 @@ export async function processFallback(
   ]);
   if (!quote || !deposit) return;
 
-  if (!ctx.env.PAYMESH_DEX_ADDRESS || !ctx.env.PAYMESH_BRIDGE_ADDRESS) {
+  const sourceContracts = quote.fromChainId === 11155111
+    ? { dex: ctx.env.PAYMESH_SEPOLIA_DEX_ADDRESS, bridge: ctx.env.PAYMESH_SEPOLIA_BRIDGE_ADDRESS }
+    : quote.fromChainId === 84532
+      ? { dex: ctx.env.PAYMESH_BASE_SEPOLIA_DEX_ADDRESS, bridge: ctx.env.PAYMESH_BASE_SEPOLIA_BRIDGE_ADDRESS }
+      : { dex: ctx.env.PAYMESH_DEX_ADDRESS, bridge: ctx.env.PAYMESH_BRIDGE_ADDRESS };
+
+  if (!sourceContracts.dex || !sourceContracts.bridge) {
     await failDeposit(ctx, depositId, quoteId, 'ROUTING_NOT_CONFIGURED');
     return;
   }
@@ -244,8 +250,8 @@ export async function processFallback(
   const adapters = createDefaultAdapters({
     rpcUrl: getChain(quote.fromChainId).rpcUrl,
     sourceChainId: quote.fromChainId,
-    dexAddress: ctx.env.PAYMESH_DEX_ADDRESS as Address,
-    bridgeAddress: ctx.env.PAYMESH_BRIDGE_ADDRESS as Address,
+    dexAddress: sourceContracts.dex as Address,
+    bridgeAddress: sourceContracts.bridge as Address,
     destChainId: deposit.toChainId,
   });
 

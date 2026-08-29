@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { generateId } from '@paymesh/db';
@@ -8,8 +8,8 @@ import type { CreateWebhookDto } from './dto';
 @Injectable()
 export class WebhooksService {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly audit: AuditService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   async create(clientId: string, dto: CreateWebhookDto) {

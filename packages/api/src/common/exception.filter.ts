@@ -61,7 +61,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         code,
         message,
         path: request.url,
-        cause: exception instanceof Error ? `${exception.name}: ${exception.message}` : String(exception),
+        cause: exception instanceof Error ? `${exception.name}: ${exception.message}\n${exception.stack}` : String(exception),
       }),
     );
 

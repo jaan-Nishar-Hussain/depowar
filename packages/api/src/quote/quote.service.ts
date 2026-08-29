@@ -18,9 +18,9 @@ import type { QuoteQueryDto, ReportTransactionDto } from './dto';
 @Injectable()
 export class QuoteService {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly events: EventService,
-    private readonly queue: QueueService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(EventService) private readonly events: EventService,
+    @Inject(QueueService) private readonly queue: QueueService,
     @Inject(ENV) private readonly env: AppEnv,
     @Inject(ROUTING_PROVIDER) private readonly routing: RoutingProvider,
     @Inject(SCREENING_PROVIDER) private readonly screening: ScreeningProvider,

@@ -10,12 +10,14 @@ let accountState: {
   chain?: { id: number; name: string };
 };
 const walletClient = { sendTransaction: vi.fn() };
+const readContract = vi.fn().mockResolvedValue(18);
 
 vi.mock('wagmi', () => ({
   useAccount: () => accountState,
   useConnect: () => ({ connect, connectors: [{ id: 'injected', name: 'Injected' }] }),
   useSwitchChain: () => ({ switchChain }),
   useWalletClient: () => ({ data: walletClient }),
+  usePublicClient: () => ({ readContract }),
 }));
 
 const mocks = {
@@ -23,6 +25,7 @@ const mocks = {
   getQuote: vi.fn(),
   signAndSend: vi.fn(),
   reportTransaction: vi.fn(),
+  getStatus: vi.fn(),
   pollUntilSettled: vi.fn(),
 };
 
@@ -32,6 +35,7 @@ vi.mock('@paymesh/sdk', () => ({
     getQuote = mocks.getQuote;
     signAndSend = mocks.signAndSend;
     reportTransaction = mocks.reportTransaction;
+    getStatus = mocks.getStatus;
     pollUntilSettled = mocks.pollUntilSettled;
   },
 }));
@@ -82,7 +86,11 @@ describe('PayMeshDeposit', () => {
 
     await waitFor(() => expect(mocks.createDepositIntent).toHaveBeenCalledTimes(1));
     expect(mocks.getQuote).toHaveBeenCalledWith(
-      expect.objectContaining({ fromChain: 11155111, fromAmount: '0.01', fromToken: 'native' }),
+      expect.objectContaining({
+        fromChain: 11155111,
+        fromAmount: '10000000000000000', // 0.01 ETH -> wei
+        fromToken: 'native',
+      }),
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
@@ -101,5 +109,34 @@ describe('PayMeshDeposit', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Deposit' }));
 
     await waitFor(() => expect(screen.getByText('No route is available for that combination of chain and asset.')).toBeInTheDocument());
+  });
+
+  it('signs every hop of a multi-step route before settling', async () => {
+    accountState = { address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266', isConnected: true, chain: { id: 11155111, name: 'Sepolia' } };
+    mocks.getQuote.mockResolvedValue({
+      quoteId: 'qt_2',
+      route: [{ type: 'swap' }, { type: 'transfer' }],
+      estimatedOutput: '1980000',
+      estimatedTimeSeconds: 95,
+      hopTransactionRequests: [
+        { to: '0x2222222222222222222222222222222222222222', data: '0xaaa', value: '0' },
+        { to: '0x3333333333333333333333333333333333333333', data: '0xbbb', value: '0' },
+      ],
+    });
+    mocks.getStatus.mockResolvedValue({ status: 'AWAITING_SIGNATURE' });
+
+    render(<PayMeshDeposit config={config} />);
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '0.01' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Deposit' }));
+    await waitFor(() => expect(mocks.getQuote).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    await waitFor(() => {
+      expect(mocks.signAndSend).toHaveBeenCalledTimes(2);
+      expect(mocks.reportTransaction).toHaveBeenNthCalledWith(1, 'qt_2', 0, expect.any(String));
+      expect(mocks.reportTransaction).toHaveBeenNthCalledWith(2, 'qt_2', 1, expect.any(String));
+    });
+    await waitFor(() => expect(screen.getByText('Deposit Completed')).toBeInTheDocument());
   });
 });

@@ -10,8 +10,9 @@ function DepositConfigCard() {
     apiUrl: import.meta.env.VITE_API_URL ?? 'http://localhost:4000',
     apiKey: import.meta.env.VITE_API_KEY ?? '',
     recipientId: import.meta.env.VITE_RECIPIENT_ID ?? '',
-    toChain: Number(import.meta.env.VITE_TO_CHAIN ?? 84532),
+    toChain: Number(import.meta.env.VITE_TO_CHAIN ?? 80002),
     toToken: import.meta.env.VITE_TO_TOKEN ?? 'USDC',
+    fromToken: import.meta.env.VITE_FROM_TOKEN ?? 'native',
   };
   return <PayMeshDeposit config={config} />;
 }

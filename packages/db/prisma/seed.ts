@@ -7,6 +7,9 @@ const prisma = new PrismaClient();
 async function main() {
   const apiKey = `pm_dev_${randomBytes(16).toString('hex')}`;
 
+  // Idempotent: remove any previous dev client so re-seeding gives a fresh key.
+  await prisma.client.deleteMany({ where: { name: 'PayMesh Development' } });
+
   const client = await prisma.client.create({
     data: {
       name: 'PayMesh Development',
@@ -40,8 +43,8 @@ async function main() {
       idempotencyKey: 'seed-intent-1',
       toChainId: 84532,
       toToken: 'USDC',
-      minAmount: 1_000_000n,
-      maxAmount: 100_000_000n,
+      minAmount: '1000000',
+      maxAmount: '100000000',
     },
   });
 

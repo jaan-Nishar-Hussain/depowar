@@ -1,5 +1,14 @@
 # PayMesh — Universal Deposit Layer
 
+## Current testnet scope
+
+The supported three-chain pilot is intentionally fixed to:
+
+- Ethereum Sepolia (`11155111`) and Base Sepolia (`84532`) as source chains
+- Polygon Amoy (`80002`) as the only settlement chain
+
+Users can send from either source chain; recipient settlement is always on Polygon Amoy.
+
 A non-custodial routing and settlement layer: a payer sends **any asset on any chain**, PayMesh finds the best route (swap + bridge + swap), and the recipient receives **exactly what they configured** — an EOA, a contract, or a specific token on a specific chain. PayMesh never holds funds; every hop is a sender-signed on-chain transaction.
 
 Full spec: [`docs/PRD.md`](docs/PRD.md).

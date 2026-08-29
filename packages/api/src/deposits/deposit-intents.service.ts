@@ -1,20 +1,31 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PayMeshError } from '../common/errors';
 import { generateId } from '@paymesh/db';
 import { AuditService } from '../audit/audit.service';
 import { EventService } from '../queue/event.service';
+import { ENV } from '../common/tokens';
+import { AppEnv } from '@paymesh/config';
 import type { CreateDepositIntentDto } from './dto';
 
 @Injectable()
 export class DepositIntentsService {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly audit: AuditService,
-    private readonly events: EventService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(EventService) private readonly events: EventService,
+    @Inject(ENV) private readonly env: AppEnv,
   ) {}
 
   async create(clientId: string, dto: CreateDepositIntentDto) {
+    if (dto.toChain !== this.env.PAYMESH_DEST_CHAIN_ID) {
+      throw new PayMeshError(
+        'INVALID_DESTINATION_CHAIN',
+        `Only Polygon Amoy (${this.env.PAYMESH_DEST_CHAIN_ID}) is enabled for settlement`,
+        'This deposit destination is not currently supported.',
+        400,
+      );
+    }
     const recipient = await this.prisma.recipient.findFirst({
       where: { id: dto.recipientId, clientId },
     });

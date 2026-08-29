@@ -13,7 +13,7 @@ export class ChainsTokensController {
   @Get('tokens')
   @Scopes('quote')
   tokens(@Query('chainId') chainId?: string) {
-    const id = chainId ? Number(chainId) : 31337;
+    const id = chainId ? Number(chainId) : 80002;
     return getTokens(id);
   }
 }

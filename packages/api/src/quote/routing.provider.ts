@@ -32,9 +32,19 @@ export class DefaultRoutingProvider implements RoutingProvider {
   constructor(@Inject(ENV) private readonly env: AppEnv) {}
 
   async getQuote(req: QuoteRequest): Promise<RoutingQuoteResult> {
-    if (!this.env.PAYMESH_DEX_ADDRESS || !this.env.PAYMESH_BRIDGE_ADDRESS) {
+    if (req.toChain !== this.env.PAYMESH_DEST_CHAIN_ID) {
+      throw routeNotFound({ reason: `settlement is restricted to chain ${this.env.PAYMESH_DEST_CHAIN_ID}` });
+    }
+
+    const source = req.fromChain === 11155111
+      ? { dex: this.env.PAYMESH_SEPOLIA_DEX_ADDRESS, bridge: this.env.PAYMESH_SEPOLIA_BRIDGE_ADDRESS }
+      : req.fromChain === 84532
+        ? { dex: this.env.PAYMESH_BASE_SEPOLIA_DEX_ADDRESS, bridge: this.env.PAYMESH_BASE_SEPOLIA_BRIDGE_ADDRESS }
+        : { dex: this.env.PAYMESH_DEX_ADDRESS, bridge: this.env.PAYMESH_BRIDGE_ADDRESS };
+
+    if (!source.dex || !source.bridge) {
       throw routeNotFound({
-        reason: 'routing contracts not configured (PAYMESH_DEX_ADDRESS / PAYMESH_BRIDGE_ADDRESS)',
+        reason: `routing contracts not configured for source chain ${req.fromChain}`,
       });
     }
 
@@ -43,12 +53,12 @@ export class DefaultRoutingProvider implements RoutingProvider {
 
     const swapAdapter = createMockDexAdapter({
       publicClient,
-      dexAddress: this.env.PAYMESH_DEX_ADDRESS as Address,
+      dexAddress: source.dex as Address,
       chains: [req.fromChain],
     });
     const bridgeAdapter = createMockBridgeAdapter({
       publicClient,
-      bridgeAddress: this.env.PAYMESH_BRIDGE_ADDRESS as Address,
+      bridgeAddress: source.bridge as Address,
       destChainId: this.env.PAYMESH_DEST_CHAIN_ID,
       supportedFromChains: [req.fromChain],
       supportedToChains: [req.toChain],

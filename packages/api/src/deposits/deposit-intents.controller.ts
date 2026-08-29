@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Post } from '@nestjs/common';
 import { ZodPipe } from '../common/zod.pipe';
 import { stringifyBigInts } from '../common/serialize';
 import { Client, Scopes, type ClientContext } from '../auth/decorators';
@@ -7,7 +7,7 @@ import { DepositIntentsService } from './deposit-intents.service';
 
 @Controller('deposit-intents')
 export class DepositIntentsController {
-  constructor(private readonly service: DepositIntentsService) {}
+  constructor(@Inject(DepositIntentsService) private readonly service: DepositIntentsService) {}
 
   @Post()
   @Scopes('deposits')

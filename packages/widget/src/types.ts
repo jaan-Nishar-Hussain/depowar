@@ -42,6 +42,7 @@ export interface PayMeshDepositApi {
   }): Promise<QuoteResult>;
   signAndSend(wallet: unknown, tx: { to: string; data: string; value: string }): Promise<string>;
   reportTransaction(quoteId: string, hopIndex: number, txHash: string): Promise<unknown>;
+  getStatus(depositId: string): Promise<{ status: string }>;
   pollUntilSettled(
     depositId: string,
     opts?: { intervalMs?: number; timeoutMs?: number },

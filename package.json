@@ -21,12 +21,15 @@
     "db:seed": "pnpm --filter @paymesh/db seed",
     "db:studio": "pnpm --filter @paymesh/db studio",
     "deploy:anvil": "pnpm --filter @paymesh/contracts deploy:anvil",
+    "anvil:fund": "node scripts/anvil-fund.mjs",
     "chains:up": "docker compose up -d",
     "chains:down": "docker compose down"
   },
   "devDependencies": {
+    "dotenv": "^16.4.7",
     "turbo": "^2.5.2",
-    "typescript": "~5.7.3"
+    "typescript": "~5.7.3",
+    "viem": "^2.21.0"
   },
   "pnpm": {
     "overrides": {

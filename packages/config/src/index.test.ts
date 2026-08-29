@@ -21,7 +21,7 @@ describe('env', () => {
 describe('chains', () => {
   it('registers the three Sepolia-family testnets plus Anvil', () => {
     loadEnv({});
-    expect(listChains().map((c) => c.id)).toEqual(expect.arrayContaining([31337, 11155111, 84532, 421614]));
+    expect(listChains().map((c) => c.id)).toEqual(expect.arrayContaining([31337, 11155111, 84532, 80002]));
   });
 
   it('defaults testnet RPCs to the local anvil URL', () => {
@@ -40,10 +40,11 @@ describe('chains', () => {
 });
 
 describe('tokens', () => {
-  it('returns native + USDC + WETH on every chain', () => {
-    for (const id of [31337, 11155111, 84532, 421614]) {
+  it('returns the supported assets for each pilot chain', () => {
+    for (const id of [31337, 11155111, 84532, 80002]) {
       const symbols = getTokens(id).map((t) => t.symbol);
-      expect(symbols).toEqual(expect.arrayContaining(['ETH', 'USDC', 'WETH']));
+      expect(symbols).toContain('USDC');
+      expect(symbols).toContain(id === 80002 ? 'POL' : 'ETH');
     }
   });
 

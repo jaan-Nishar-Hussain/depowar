@@ -1,3 +1,5 @@
+import path from 'node:path';
+import { config as loadDotenv } from 'dotenv';
 import { Worker } from 'bullmq';
 import { PrismaClient } from '@paymesh/db';
 import { loadEnv } from '@paymesh/config';
@@ -6,6 +8,9 @@ import { createWorkerContext, type WorkerContext } from './context';
 import { processTxMonitor, processFallback } from './monitor';
 import { processWebhookDispatch } from './webhook';
 import { processQuoteExpiry } from './expiry';
+
+// Load the repo-root .env so `cp .env.example .env` works from the monorepo root.
+loadDotenv({ path: path.resolve(__dirname, '..', '..', '..', '.env') });
 
 export function startWorkers(ctx: WorkerContext): Worker[] {
   const opts = { connection: connection(ctx.env), concurrency: 4 };

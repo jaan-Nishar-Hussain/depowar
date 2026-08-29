@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { PayMeshError } from '../common/errors';
@@ -8,8 +8,8 @@ import type { SettlementUpdateDto } from './dto';
 @Injectable()
 export class RecipientsService {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly audit: AuditService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   async get(clientId: string, id: string): Promise<unknown> {
