@@ -1,0 +1,11 @@
+[proof]
+foundry_root = "."
+solc = "0.8.24"
+
+# The core property: DepositReceiver.deposit forwards the full amount to the
+# owner and never retains a balance. Bounded in terms of a single call.
+function = "deposit"
+solver_timeout_secs = 300
+
+[search]
+loop = 2

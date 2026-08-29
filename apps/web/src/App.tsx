@@ -1,0 +1,38 @@
+import { WagmiProvider } from 'wagmi';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { PayMeshDeposit } from '@paymesh/widget';
+import { wagmiConfig } from './lib/wagmi';
+
+const queryClient = new QueryClient();
+
+function DepositConfigCard() {
+  const config = {
+    apiUrl: import.meta.env.VITE_API_URL ?? 'http://localhost:4000',
+    apiKey: import.meta.env.VITE_API_KEY ?? '',
+    recipientId: import.meta.env.VITE_RECIPIENT_ID ?? '',
+    toChain: Number(import.meta.env.VITE_TO_CHAIN ?? 84532),
+    toToken: import.meta.env.VITE_TO_TOKEN ?? 'USDC',
+  };
+  return <PayMeshDeposit config={config} />;
+}
+
+export function App() {
+  return (
+    <WagmiProvider config={wagmiConfig}>
+      <QueryClientProvider client={queryClient}>
+        <div className="min-h-screen bg-slate-950 text-slate-100">
+          <div className="mx-auto max-w-2xl px-6 py-10">
+            <header className="mb-8">
+              <h1 className="text-3xl font-bold tracking-tight">PayMesh</h1>
+              <p className="mt-1 text-slate-400">Universal deposit layer — pay in any asset, settle anywhere.</p>
+            </header>
+            <DepositConfigCard />
+            <footer className="mt-12 border-t border-slate-800 pt-4 text-xs text-slate-500">
+              Non-custodial routing & settlement. Testnet demo running against Anvil + mock contracts.
+            </footer>
+          </div>
+        </div>
+      </QueryClientProvider>
+    </WagmiProvider>
+  );
+}

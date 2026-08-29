@@ -1,0 +1,21 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "load"
+
+onlyBuiltDependencies:
+  - "@prisma/client"
+  - "prisma"
+  - "esbuild"
+  - "@swc/core"
+  - "core-js"
+  - "unrs-resolver"
+  - "sharp"
+  - "playwright"
+  - "@playwright/test"
+  - "@synthetixio/synpress"
+  - "@sparticuz/chromium"
+  - "puppeteer"
+  - "bufferutil"
+  - "utf-8-validate"
+  - "isolated-vm"

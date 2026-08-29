@@ -1,0 +1,55 @@
+name: Deploy
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  DATABASE_URL: postgresql://paymesh:paymesh@localhost:5432/paymesh
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: paymesh
+          POSTGRES_PASSWORD: paymesh
+          POSTGRES_DB: paymesh
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U paymesh" --health-interval 5s --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: pnpm turbo run lint test test:contracts test:e2e build
+      - uses: docker/setup-buildx-action@v3
+      - name: Build & push images
+        run: echo "Tag-triggered production deploy — wire docker build/push + Terraform apply here."
+
+  deploy-prod:
+    runs-on: ubuntu-latest
+    needs: test-and-build
+    steps:
+      - name: Promote to production
+        run: echo "Production deploy — see README §Deploy for the real pipeline."

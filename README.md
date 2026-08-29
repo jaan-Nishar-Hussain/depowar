@@ -1,0 +1,112 @@
+# PayMesh — Universal Deposit Layer
+
+A non-custodial routing and settlement layer: a payer sends **any asset on any chain**, PayMesh finds the best route (swap + bridge + swap), and the recipient receives **exactly what they configured** — an EOA, a contract, or a specific token on a specific chain. PayMesh never holds funds; every hop is a sender-signed on-chain transaction.
+
+Full spec: [`docs/PRD.md`](docs/PRD.md).
+
+## Repo layout (Turborepo 2 + pnpm)
+
+```
+apps/
+  web/        # Vite + React widget host (Playwright + Synpress E2E)
+  worker/     # BullMQ consumers: tx-monitor, bridge settlement, fallback, webhook dispatch
+packages/
+  api/        # NestJS REST server (auth, quotes, deposit intents, status, webhooks, screening)
+  widget/     # <PayMeshDeposit/> React component (wagmi + viem)
+  sdk/        # Headless TS client wrapping the API
+  routing-engine/  # quote scoring, DEX/bridge adapters, fallback (the core IP)
+  contracts/  # Foundry project: DepositReceiver + MockERC20/MockDEX/MockBridge
+  db/         # Prisma schema, migrations, seed
+  config/     # zod env schemas, chain/token registries
+  tsconfig/   # shared TS configs
+load/         # k6 load-test scripts
+```
+
+## Quickstart
+
+Prereqs: Node 20+, pnpm 10, Foundry (forge/anvil), Docker.
+
+```bash
+pnpm install
+docker compose up -d                      # Postgres + Redis
+cp .env.example .env                       # defaults work for local dev
+
+pnpm db:migrate                            # apply Prisma migrations
+pnpm db:seed                               # creates a dev client + API key (printed once)
+
+# Local chain + mock contracts (Anvil)
+anvil --chain-id 31337 --port 8545 &       # or: pnpm --filter @paymesh/contracts run ... 
+pnpm deploy:anvil                          # forge script: deploy mocks to Anvil
+
+# Run the stack
+pnpm dev:api                               # NestJS on :4000
+pnpm dev:worker                            # job runner
+pnpm dev:web                               # widget host on :5173
+```
+
+Seed output includes the API key and recipient id — put them in `apps/web/.env` (`VITE_API_KEY`, `VITE_RECIPIENT_ID`) and set the on-chain routing env in `.env`:
+
+```
+PAYMESH_DEX_ADDRESS=0x...                 # from deploy:anvil output
+PAYMESH_BRIDGE_ADDRESS=0x...              # source-chain bridge
+PAYMESH_DEST_CHAIN_ID=31338               # destination chain for 2-anvil tests
+RELAYER_PRIVATE_KEY=0xac09...             # relayer for MockBridge settlement
+```
+
+## Testing
+
+```bash
+pnpm turbo run lint test test:contracts    # fast unit + Foundry + MSW/anvil tests
+pnpm turbo run test:e2e                    # Docker-backed integration (API + worker settlement flows)
+pnpm --filter @paymesh/web test:wallet     # gated Playwright + Synpress wallet E2E (full stack required)
+```
+
+Stack (PRD §16): Forge (unit/fuzz/invariant), Vitest + MSW, Testcontainers (Postgres/Redis), Supertest, @viem/anvil, Playwright + Synpress, Slither, k6.
+
+Key test coverage:
+- `packages/contracts` — `DepositReceiver` fuzz + invariant (never retains a balance), `MockDEX`/`MockBridge` failure injection.
+- `packages/routing-engine` — MSW-mocked HTTP providers, scoring, fallback, on-chain swap/bridge quoting on two Anvils.
+- `packages/api` — Supertest e2e: auth, idempotency, typed errors, screening, webhooks, settlement config (Testcontainers).
+- `apps/worker` — full cross-chain settlement: swap → bridge → relayer settle → `deposit.settled` webhook; and fail → fallback → `deposit.failed` (Testcontainers + 2 Anvils).
+- `apps/web` — Synpress MetaMask wallet E2E (gated).
+
+## API surface
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/v1/deposit-intents` | Create a deposit intent (idempotent) |
+| GET | `/v1/quote` | Best route + per-hop signable transactions |
+| POST | `/v1/quote/:id/execute` | Server-custody sign+submit (optional) |
+| POST | `/v1/quote/:id/transactions` | Report a sender-signed hop for monitoring |
+| GET | `/v1/status?depositId=` | Poll deposit lifecycle |
+| POST/DELETE | `/v1/webhooks` | Register/remove HMAC-signed webhooks |
+| GET | `/v1/chains`, `/v1/tokens` | Supported networks/assets |
+| PUT | `/v1/recipients/:id/settlement` | Update recipient settlement config |
+
+Errors always return `{ error: { code, message, userMessage, details }, requestId }` — `userMessage` is safe to render in a UI.
+
+## Non-custodial flow
+
+1. **Widget** creates a deposit intent and quotes a route (`GET /quote`).
+2. The route returns **one signable transaction per hop** (`hopTransactionRequests`).
+3. The sender signs hop 0 (e.g. swap) and reports the tx hash; the **worker** monitors it.
+4. Each next hop is signed in turn; the terminal bridge hop is settled on the destination by the relayer (mocked by `MockBridge` in the testnet stack).
+5. Lifecycle events (`quote.ready`, `tx.submitted`, `tx.confirmed`, `deposit.settled`, `deposit.failed`) are HMAC-signed and delivered to registered webhooks.
+
+## Deploy
+
+- `ci.yml`: PR pipeline (typecheck, unit/Foundry tests, Docker-backed e2e, Slither, gated wallet E2E), staging hook on `main`.
+- `deploy.yml`: tag-triggered production scaffold — wire Docker build/push + Terraform per §14/§21.
+- Contracts deploy: `pnpm --filter @paymesh/contracts deploy:sepolia` (Foundry script, env-driven RPC + key).
+
+## Notes / gotchas
+
+- Amounts are stored as `Decimal(78,0)` strings (raw base units can exceed Postgres `bigint`).
+- Anvil is the default RPC for all chains; set `ALCHEMY_*_RPC` to exercise real testnets.
+- `@paymesh/tsconfig` must be a devDependency of any package that extends it (pnpm linking).
+- Vitest transforms `src` with esbuild (no decorator metadata) — the API **e2e** suite runs against the tsc-compiled `dist`; unit tests run against `src`.
+- Synpress 4.x changed its API (`testWithSynpress`/`defineWalletSetup` from the package root, `metaMaskFixtures`/`MetaMask` from `/playwright`); `playwright-core` is pinned via pnpm overrides.
+
+---
+
+*Build spec only — not legal or security advice. Get a real audit and legal review before real funds move through this.*

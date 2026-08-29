@@ -1,0 +1,9 @@
+{
+  "extends": "@paymesh/tsconfig/node.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "ts",
+    "types": ["node"]
+  },
+  "include": ["ts/**/*"]
+}

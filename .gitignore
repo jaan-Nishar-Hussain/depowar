@@ -1,0 +1,49 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# builds
+dist/
+lib/
+build/
+out/
+artifacts/
+cache/
+
+# turbo
+.turbo/
+
+# env & secrets
+.env
+.env.local
+.env.*.local
+
+# prisma
+packages/db/prisma/migrations/dev.db*
+packages/db/generated/
+
+# foundry
+packages/contracts/cache/
+packages/contracts/out/
+packages/contracts/coverage/
+packages/contracts/broadcast/
+
+# hardhat
+packages/contracts/artifacts/
+
+# tests
+coverage/
+test-results/
+playwright-report/
+.blob-report/
+
+# anvil / local chain state
+.anvil/
+anvil-*.log
+
+# os
+.DS_Store
+
+# logs
+*.log
+npm-debug.log*

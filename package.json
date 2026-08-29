@@ -1,0 +1,36 @@
+{
+  "name": "depowar",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "test:contracts": "turbo run test:contracts",
+    "test:e2e": "turbo run test:e2e",
+    "test:wallet": "turbo run test:wallet",
+    "lint": "turbo run lint",
+    "dev": "turbo run dev",
+    "dev:web": "pnpm --filter @paymesh/web dev",
+    "dev:api": "pnpm --filter @paymesh/api dev",
+    "dev:worker": "pnpm --filter @paymesh/worker dev",
+    "db:migrate": "pnpm --filter @paymesh/db migrate:dev",
+    "db:seed": "pnpm --filter @paymesh/db seed",
+    "db:studio": "pnpm --filter @paymesh/db studio",
+    "deploy:anvil": "pnpm --filter @paymesh/contracts deploy:anvil",
+    "chains:up": "docker compose up -d",
+    "chains:down": "docker compose down"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.2",
+    "typescript": "~5.7.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "playwright-core": "1.62.1"
+    }
+  }
+}

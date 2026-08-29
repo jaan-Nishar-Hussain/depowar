@@ -1,0 +1,29 @@
+{
+  "name": "@paymesh/routing-engine",
+  "version": "0.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@paymesh/config": "workspace:*",
+    "viem": "^2.21.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@paymesh/contracts": "workspace:*",
+    "@types/node": "^22.10.5",
+    "@viem/anvil": "^0.0.10",
+    "msw": "^2.7.0",
+    "typescript": "~5.7.3",
+    "vitest": "^3.2.4",
+    "@paymesh/tsconfig": "workspace:*"
+  }
+}

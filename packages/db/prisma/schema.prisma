@@ -1,0 +1,165 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Integrator / tenant that owns API keys and webhooks.
+model Client {
+  id             String             @id @default(cuid())
+  name           String
+  apiKeys        ApiKey[]
+  webhooks       WebhookSubscription[]
+  recipients     Recipient[]
+  depositIntents DepositIntent[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  clientId   String
+  client     Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  keyHash    String    @unique
+  scopes     String[]  @default(["deposits", "quote", "webhooks"])
+  enabled    Boolean   @default(true)
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+/// Recipient: where and how funds settle (PRD §8).
+model Recipient {
+  id                String             @id @default(cuid())
+  clientId          String
+  client            Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  walletAddress     String
+  settlementType    String             @default("EOA") // EOA | CONTRACT
+  preferredChainId  Int?
+  preferredToken    String?
+  kycStatus         String             @default("none") // none | screened | denied
+  settlementConfigs SettlementConfig[]
+  depositIntents    DepositIntent[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+}
+
+model SettlementConfig {
+  id             String    @id @default(cuid())
+  recipientId    String
+  recipient      Recipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  chainId        Int
+  token          String // token address or 'native'
+  settlementType String    @default("EOA") // EOA | CONTRACT
+  contractAddress String?
+  minAmount      Decimal? @db.Decimal(78, 0)
+  maxAmount      Decimal? @db.Decimal(78, 0)
+  enabled        Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+/// Created before a sender pays; represents "what should happen" (PRD §8).
+model DepositIntent {
+  id             String        @id @default(cuid())
+  clientId       String
+  client         Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  recipientId    String
+  recipient      Recipient     @relation(fields: [recipientId], references: [id])
+  idempotencyKey String        @unique
+  toChainId      Int
+  toToken        String
+  minAmount      Decimal? @db.Decimal(78, 0)
+  maxAmount      Decimal? @db.Decimal(78, 0)
+  status         String        @default("PENDING") // PENDING | AWAITING_SIGNATURE | IN_FLIGHT | SETTLED | FAILED
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  quotes         Quote[]
+  transactions   Transaction[]
+}
+
+/// One route for a deposit; a deposit can be re-quoted on expiry (PRD §8).
+model Quote {
+  id                 String        @id @default(cuid())
+  depositIntentId    String
+  depositIntent      DepositIntent @relation(fields: [depositIntentId], references: [id], onDelete: Cascade)
+  fromChainId        Int
+  fromToken          String
+  fromAmount         Decimal @db.Decimal(78, 0)
+  fromAddress        String?
+  toAddress          String?
+  routePath          Json
+  estimatedFee       Decimal @db.Decimal(78, 0)
+  estimatedTimeSeconds Int
+  estimatedOutput    Decimal @db.Decimal(78, 0)
+  slippageBps        Int
+  reliability        Float
+  transactionRequest Json
+  hopTransactionRequests Json
+  status             String        @default("ACTIVE") // ACTIVE | EXPIRED | USED | REJECTED
+  expiresAt          DateTime
+  createdAt          DateTime      @default(now())
+  transactions       Transaction[]
+}
+
+/// One row per on-chain hop (PRD §8).
+model Transaction {
+  id              String        @id @default(cuid())
+  quoteId         String
+  quote           Quote         @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  depositIntentId String
+  depositIntent   DepositIntent @relation(fields: [depositIntentId], references: [id], onDelete: Cascade)
+  hopIndex        Int
+  chainId         Int
+  txHash          String?
+  status          String        @default("PENDING") // PENDING | SUBMITTED | CONFIRMED | FAILED | TIMEOUT
+  errorCode       String?
+  submittedAt     DateTime?
+  confirmedAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model WebhookSubscription {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  url       String
+  events    String[] // quote.ready | tx.submitted | deposit.settled | deposit.failed
+  secret    String
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+/// Lifecycle event queue consumed by the webhook-dispatch worker.
+model Event {
+  id              String   @id @default(cuid())
+  clientId        String
+  depositIntentId String?
+  type            String // quote.ready | tx.submitted | deposit.settled | deposit.failed
+  payload         Json
+  createdAt       DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  clientId   String?
+  actor      String?
+  action     String
+  entityType String?
+  entityId   String?
+  details    Json?
+  createdAt  DateTime @default(now())
+}
+
+model ErrorLog {
+  id        String   @id @default(cuid())
+  depositId String?
+  code      String
+  message   String
+  context   Json?
+  createdAt DateTime @default(now())
+}

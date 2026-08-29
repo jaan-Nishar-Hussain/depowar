@@ -1,0 +1,9 @@
+{
+  "name": "@paymesh/load",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "load:quote": "k6 run scripts/quote.js",
+    "load:execute": "k6 run scripts/execute.js"
+  }
+}

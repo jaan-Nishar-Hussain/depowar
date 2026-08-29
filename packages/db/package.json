@@ -1,0 +1,35 @@
+{
+  "name": "@paymesh/db",
+  "version": "0.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "prisma"
+  ],
+  "scripts": {
+    "build": "prisma generate && tsc -p tsconfig.json",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "generate": "prisma generate",
+    "studio": "prisma studio",
+    "seed": "tsx prisma/seed.ts",
+    "test": "vitest run test/*.spec.ts",
+    "lint": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "prisma": "^6.2.1",
+    "testcontainers": "^10.15.0",
+    "tsx": "^4.19.2",
+    "typescript": "~5.7.3",
+    "vitest": "^3.2.4",
+    "@paymesh/tsconfig": "workspace:*",
+    "@testcontainers/postgresql": "^10.15.0",
+    "@testcontainers/redis": "^10.15.0"
+  }
+}

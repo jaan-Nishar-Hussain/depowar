@@ -1,0 +1,38 @@
+{
+  "name": "@paymesh/worker",
+  "version": "0.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run test/*.spec.ts",
+    "test:e2e": "vitest run test/e2e",
+    "lint": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@paymesh/config": "workspace:*",
+    "@paymesh/contracts": "workspace:*",
+    "@paymesh/db": "workspace:*",
+    "@paymesh/routing-engine": "workspace:*",
+    "bullmq": "^5.34.0",
+    "ioredis": "^5.4.2",
+    "viem": "^2.21.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@viem/anvil": "^0.0.10",
+    "testcontainers": "^10.15.0",
+    "tsx": "^4.19.2",
+    "typescript": "~5.7.3",
+    "vitest": "^3.2.4",
+    "@paymesh/tsconfig": "workspace:*",
+    "@testcontainers/postgresql": "^10.15.0",
+    "@testcontainers/redis": "^10.15.0"
+  }
+}

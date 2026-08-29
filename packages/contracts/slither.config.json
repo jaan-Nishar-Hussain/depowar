@@ -1,0 +1,5 @@
+{
+  "filter_paths": "(lib/|mocks/|test/|script/)",
+  "detectors_to_exclude": "pragma-version,missing-inheritance",
+  "compile_force_framework": "foundry"
+}

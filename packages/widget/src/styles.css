@@ -1,0 +1,85 @@
+.pm-deposit {
+  border: 1px solid var(--pm-border, #e5e7eb);
+  border-radius: 12px;
+  padding: 16px;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  max-width: 360px;
+  background: var(--pm-bg, #ffffff);
+  color: var(--pm-fg, #111827);
+}
+.pm-deposit__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.pm-deposit__title {
+  font-weight: 600;
+}
+.pm-deposit__chain {
+  font-size: 12px;
+  color: #6b7280;
+}
+.pm-deposit__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pm-field__label {
+  font-size: 12px;
+  color: #6b7280;
+}
+.pm-input {
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.pm-btn {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  background: #f9fafb;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+.pm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pm-btn--primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+.pm-btn--ghost {
+  background: transparent;
+}
+.pm-quote {
+  border-top: 1px dashed #d1d5db;
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pm-quote__row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.pm-status {
+  font-size: 13px;
+  color: #6b7280;
+}
+.pm-status--ok {
+  color: #16a34a;
+}
+.pm-status--error {
+  color: #dc2626;
+}
