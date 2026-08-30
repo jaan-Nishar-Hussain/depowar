@@ -10,11 +10,11 @@
   ],
   "scripts": {
     "build": "prisma generate && tsc -p tsconfig.json",
-    "migrate:dev": "prisma migrate dev",
-    "migrate:deploy": "prisma migrate deploy",
+    "migrate:dev": "node --env-file=../../.env node_modules/prisma/build/index.js migrate dev",
+    "migrate:deploy": "node --env-file=../../.env node_modules/prisma/build/index.js migrate deploy",
     "generate": "prisma generate",
-    "studio": "prisma studio",
-    "seed": "tsx prisma/seed.ts",
+    "studio": "node --env-file=../../.env node_modules/prisma/build/index.js studio",
+    "seed": "node --env-file=../../.env --import tsx prisma/seed.ts",
     "test": "vitest run test/*.spec.ts",
     "lint": "tsc --noEmit -p tsconfig.json"
   },

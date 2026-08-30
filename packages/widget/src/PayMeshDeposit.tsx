@@ -144,6 +144,13 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
           throw new Error('Wallet network changed while signing the route. Reconnect to the source network.');
         }
         const hash = await sdk.signAndSend(walletClient, txs[i]);
+        // Wait until the source RPC can read the transaction before asking the
+        // API to validate it. Immediately reporting a fresh hash can produce a
+        // transient 409/TX_NOT_FOUND from the API.
+        if (publicClient && typeof publicClient.waitForTransactionReceipt === 'function') {
+          const receipt = await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
+          if (receipt.status !== 'success') throw new Error('The transaction reverted on-chain.');
+        }
         await sdk.reportTransaction(quote.quoteId, i, hash);
         if (i < txs.length - 1) {
           await waitForStatus(sdk, depositId, 'AWAITING_SIGNATURE');
