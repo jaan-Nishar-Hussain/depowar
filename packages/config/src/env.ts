@@ -62,8 +62,6 @@ const EnvSchema = z.object({
   CCTP_BASE_SEPOLIA_TOKEN_MESSENGER_ADDRESS: z.string().default(''),
   CCTP_POLYGON_AMOY_MESSAGE_TRANSMITTER_ADDRESS: z.string().default(''),
   CCTP_IRIS_API_URL: z.string().default('https://iris-api-sandbox.circle.com'),
-  CCTP_ATTESTATION_POLL_MS: z.coerce.number().default(5_000),
-  CCTP_ATTESTATION_TIMEOUT_MS: z.coerce.number().default(1_200_000),
   CCTP_MAX_FEE: z.coerce.bigint().default(0n),
   CCTP_MIN_FINALITY_THRESHOLD: z.coerce.number().default(2000),
   ROUTE_PROVIDER_URLS: z.string().default(''),
