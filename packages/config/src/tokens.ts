@@ -1,4 +1,5 @@
 import type { ChainId } from './chains';
+import { getEnv } from './env';
 
 export interface TokenInfo {
   symbol: string;
@@ -44,7 +45,15 @@ export const TOKENS: Record<ChainId, TokenInfo[]> = {
 };
 
 export function getTokens(chainId: ChainId): TokenInfo[] {
-  return TOKENS[chainId] ?? [];
+  const tokens = [...(TOKENS[chainId] ?? [])];
+  const env = getEnv();
+  const usdt = chainId === 11155111
+    ? env.PAYMESH_SEPOLIA_USDT_ADDRESS
+    : chainId === 84532
+      ? env.PAYMESH_BASE_SEPOLIA_USDT_ADDRESS
+      : '';
+  if (usdt) tokens.push({ symbol: 'USDT', name: 'Tether USD', address: usdt, decimals: 6 });
+  return tokens;
 }
 
 export function getToken(chainId: ChainId, symbol: string): TokenInfo | undefined {

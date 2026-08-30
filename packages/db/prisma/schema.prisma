@@ -97,6 +97,7 @@ model Quote {
   estimatedOutput    Decimal @db.Decimal(78, 0)
   slippageBps        Int
   reliability        Float
+  settlementBaseline Decimal? @db.Decimal(78, 0)
   transactionRequest Json
   hopTransactionRequests Json
   status             String        @default("ACTIVE") // ACTIVE | EXPIRED | USED | REJECTED
@@ -115,7 +116,7 @@ model Transaction {
   hopIndex        Int
   chainId         Int
   txHash          String?
-  status          String        @default("PENDING") // PENDING | SUBMITTED | CONFIRMED | FAILED | TIMEOUT
+  status          String        @default("PENDING") // PENDING | SUBMITTED | CONFIRMED | SETTLEMENT_PENDING | FAILED | TIMEOUT
   errorCode       String?
   submittedAt     DateTime?
   confirmedAt     DateTime?

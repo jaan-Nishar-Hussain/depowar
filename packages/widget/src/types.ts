@@ -10,8 +10,12 @@ export interface PayMeshDepositConfig {
   /** Destination chain id and token the recipient receives. */
   toChain: number;
   toToken: string;
+  /** Destination token decimals; USDC defaults to 6 when omitted. */
+  toTokenDecimals?: number;
   /** Source asset the payer holds (token address or 'native'). */
   fromToken?: string;
+  /** Optional per-source-chain token map, useful when testing Sepolia and Base Sepolia together. */
+  fromTokenByChain?: Record<number, string>;
   /** Skip the "connect wallet" gate when an account is already available. */
   defaultSlippageBps?: number;
 }

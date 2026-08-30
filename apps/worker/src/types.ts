@@ -6,7 +6,7 @@ export type LifecycleEventType =
   | 'deposit.failed';
 
 export interface RouteHopLike {
-  type: 'swap' | 'bridge' | 'transfer';
+  type: 'approval' | 'swap' | 'bridge' | 'transfer';
   chainId?: number;
   fromChain?: number;
   toChain?: number;
@@ -15,6 +15,7 @@ export interface RouteHopLike {
   amountIn?: string | bigint;
   amountOut?: string | bigint;
   protocol?: string;
+  actionFor?: 'swap' | 'bridge' | 'transfer';
 }
 
 export interface TransactionRequestLike {

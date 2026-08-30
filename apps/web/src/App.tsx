@@ -11,8 +11,13 @@ function DepositConfigCard() {
     apiKey: import.meta.env.VITE_API_KEY ?? '',
     recipientId: import.meta.env.VITE_RECIPIENT_ID ?? '',
     toChain: Number(import.meta.env.VITE_TO_CHAIN ?? 80002),
-    toToken: import.meta.env.VITE_TO_TOKEN ?? 'USDC',
+    toToken: import.meta.env.VITE_TO_TOKEN ?? '0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582',
+    toTokenDecimals: Number(import.meta.env.VITE_TO_TOKEN_DECIMALS ?? 6),
     fromToken: import.meta.env.VITE_FROM_TOKEN ?? 'native',
+    fromTokenByChain: {
+      11155111: import.meta.env.VITE_SEPOLIA_USDT ?? import.meta.env.VITE_FROM_TOKEN ?? 'native',
+      84532: import.meta.env.VITE_BASE_SEPOLIA_USDT ?? import.meta.env.VITE_FROM_TOKEN ?? 'native',
+    },
   };
   return <PayMeshDeposit config={config} />;
 }
@@ -29,7 +34,7 @@ export function App() {
             </header>
             <DepositConfigCard />
             <footer className="mt-12 border-t border-slate-800 pt-4 text-xs text-slate-500">
-              Non-custodial routing & settlement. Testnet demo running against Anvil + mock contracts.
+              Non-custodial routing & settlement. Configure a real route provider for public-testnet execution.
             </footer>
           </div>
         </div>

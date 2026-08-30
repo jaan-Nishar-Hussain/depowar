@@ -1,4 +1,5 @@
 import { DEFAULT_SCORE_WEIGHTS, type CandidateRoute, type QuoteRequest, type ScoreWeights } from './types';
+import type { ProviderTelemetry } from './adapters/types';
 
 interface Scored {
   route: CandidateRoute;
@@ -12,35 +13,53 @@ interface Scored {
  */
 export function rankRoutes(
   routes: CandidateRoute[],
-  req: QuoteRequest,
+  _req: QuoteRequest,
   weights: ScoreWeights = DEFAULT_SCORE_WEIGHTS,
+  telemetry: Record<string, ProviderTelemetry> = {},
 ): CandidateRoute[] {
   if (routes.length === 0) return [];
 
-  const minCost = routes.reduce((m, r) => (r.estimatedFee < m ? r.estimatedFee : m), routes[0]!.estimatedFee);
-  const minTime = routes.reduce((m, r) => (r.estimatedTimeSeconds < m ? r.estimatedTimeSeconds : m), routes[0]!.estimatedTimeSeconds);
-  const maxReliability = routes.reduce((m, r) => (r.reliability > m ? r.reliability : m), 0);
+  const maxOutput = routes.reduce((m, r) => (r.estimatedOutput > m ? r.estimatedOutput : m), 0n);
+  const totalCost = (route: CandidateRoute) => route.estimatedFee + (route.gasCost ?? 0n);
+  const maxCost = routes.reduce((m, r) => {
+    const cost = totalCost(r);
+    return cost > m ? cost : m;
+  }, 0n);
+  const maxTime = routes.reduce((m, r) => Math.max(m, r.estimatedTimeSeconds), 0);
 
   const scored: Scored[] = routes.map((route) => {
-    const costScore = minCost > 0n ? Number(route.estimatedFee - minCost) / Math.max(1, Number(minCost)) : 0;
-    const timeScore = minTime > 0 ? (route.estimatedTimeSeconds - minTime) / Math.max(1, minTime) : 0;
-    const reliabilityScore = maxReliability > 0 ? 1 - route.reliability / maxReliability : 0;
-
-    // Price impact as a proxy for slippage risk: how much output shrinks per
-    // unit of input relative to a 1:1 transfer.
-    const input = Number(req.fromAmount);
-    const impact = input > 0 ? Math.max(0, 1 - Number(route.estimatedOutput) / input) : 0;
-    const slippageScore = Math.min(1, impact);
+    const stats = telemetry[route.adapterId];
+    const outputScore = maxOutput > 0n ? 1 - bigintRatio(route.estimatedOutput, maxOutput) : 1;
+    const costScore = maxCost > 0n ? bigintRatio(totalCost(route), maxCost) : 0;
+    const timeScore = maxTime > 0 ? route.estimatedTimeSeconds / maxTime : 0;
+    const reliability = stats?.reliability ?? route.reliability;
+    const reliabilityScore = 1 - clamp(reliability);
+    const liquidityScore = 1 - clamp(route.liquidityScore ?? 1);
+    const slippageScore = Math.min(1, (route.priceImpactBps ?? 0) / 10_000);
+    const riskScore = clamp(stats?.riskScore ?? route.riskScore ?? 0);
 
     const score =
+      weights.output * outputScore +
       weights.cost * costScore +
       weights.time * timeScore +
       weights.slippage * slippageScore +
-      weights.reliability * reliabilityScore;
+      weights.liquidity * liquidityScore +
+      weights.reliability * reliabilityScore +
+      weights.risk * riskScore;
 
     return { route, score };
   });
 
   scored.sort((a, b) => a.score - b.score);
   return scored.map((s) => s.route);
+}
+
+function clamp(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function bigintRatio(value: bigint, max: bigint): number {
+  if (max <= 0n) return 0;
+  const scale = 1_000_000n;
+  return Number((value * scale) / max) / Number(scale);
 }

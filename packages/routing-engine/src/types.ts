@@ -3,7 +3,7 @@ import { DEFAULT_SLIPPAGE_BPS } from '@paymesh/config';
 
 export type ChainId = number;
 
-export type HopType = 'swap' | 'bridge' | 'transfer';
+export type HopType = 'approval' | 'swap' | 'bridge' | 'transfer';
 
 export interface RouteHop {
   type: HopType;
@@ -15,6 +15,8 @@ export interface RouteHop {
   amountIn?: bigint;
   amountOut?: bigint;
   protocol?: string;
+  /** For approval hops, identifies the action that consumes the allowance. */
+  actionFor?: Exclude<HopType, 'approval'>;
 }
 
 export interface QuoteRequest {
@@ -43,6 +45,13 @@ export interface CandidateRoute {
   estimatedTimeSeconds: number;
   estimatedFee: bigint;
   reliability: number; // 0..1
+  liquidityScore?: number; // 0..1
+  priceImpactBps?: number;
+  gasCost?: bigint;
+  bridgeFee?: bigint;
+  riskScore?: number; // 0..1, higher is riskier
+  available?: boolean;
+  providerMetadata?: Record<string, string | number | boolean>;
   adapterId: string;
   transactionRequest?: TransactionRequest;
   /** One signable transaction per hop, in route order. */
@@ -55,17 +64,23 @@ export interface Quote extends CandidateRoute {
 }
 
 export interface ScoreWeights {
+  output: number;
   cost: number;
   time: number;
   slippage: number;
+  liquidity: number;
   reliability: number;
+  risk: number;
 }
 
 export const DEFAULT_SCORE_WEIGHTS: ScoreWeights = {
-  cost: 0.4,
-  time: 0.2,
-  slippage: 0.2,
-  reliability: 0.2,
+  output: 0.4,
+  cost: 0.1,
+  time: 0.1,
+  slippage: 0.1,
+  liquidity: 0.1,
+  reliability: 0.15,
+  risk: 0.05,
 };
 
 export function effectiveSlippage(req: Pick<QuoteRequest, 'slippageBps'>): number {

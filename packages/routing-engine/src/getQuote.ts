@@ -3,12 +3,15 @@ import { readArtifact } from '@paymesh/contracts';
 import { effectiveSlippage, type CandidateRoute, type Quote, type QuoteRequest, type RouteHop, type TransactionRequest } from './types';
 import { rankRoutes } from './score';
 import { routeNotFound } from './errors';
-import type { BridgeAdapter, RouteProvider, SwapAdapter } from './adapters/types';
+import type { BridgeAdapter, ProviderTelemetry, RouteProvider, SwapAdapter, SwapQuote } from './adapters/types';
+import type { ScoreWeights } from './types';
 
 export interface GetQuoteDeps {
   swapAdapters: SwapAdapter[];
   bridgeAdapters: BridgeAdapter[];
   routeProviders?: RouteProvider[];
+  telemetry?: Record<string, ProviderTelemetry>;
+  weights?: ScoreWeights;
 }
 
 const ERC20_ABI = readArtifact('MockERC20').abi;
@@ -60,6 +63,9 @@ function directCandidate(req: QuoteRequest): CandidateRoute {
     estimatedTimeSeconds: 0,
     estimatedFee: 0n,
     reliability: 1,
+    liquidityScore: 1,
+    priceImpactBps: 0,
+    available: true,
     adapterId: 'direct',
     transactionRequest: transferTx,
     hopTransactionRequests: transferTx ? [transferTx] : [],
@@ -79,37 +85,57 @@ async function buildSameChainCandidate(
     tokenOut: req.toToken,
     amountIn: req.fromAmount,
   });
+  const hops: RouteHop[] = [];
+  const txs: TransactionRequest[] = [];
+  if (req.fromToken !== 'native' && swap.buildApprovalTransaction) {
+    hops.push({
+      type: 'approval',
+      chainId: req.fromChain,
+      fromToken: req.fromToken,
+      toToken: req.fromToken,
+      amountIn: req.fromAmount,
+      amountOut: req.fromAmount,
+      protocol: swap.id,
+      actionFor: 'swap',
+    });
+    txs.push(await swap.buildApprovalTransaction(req, req.fromAmount));
+  }
   const swapTx = await swap.buildSwapTransaction(req, swapQuote);
   const transferTx = buildTransferTransaction(req, swapQuote.amountOut);
+  hops.push({
+    type: 'swap',
+    chainId: req.fromChain,
+    fromToken: req.fromToken,
+    toToken: req.toToken,
+    amountIn: req.fromAmount,
+    amountOut: swapQuote.amountOut,
+    protocol: swap.id,
+  });
+  txs.push(swapTx);
+  hops.push({
+    type: 'transfer',
+    chainId: req.fromChain,
+    fromToken: req.toToken,
+    toToken: req.toToken,
+    amountIn: swapQuote.amountOut,
+    amountOut: swapQuote.amountOut,
+    protocol: 'transfer',
+  });
+  txs.push(transferTx);
 
   return {
-    route: [
-      {
-        type: 'swap',
-        chainId: req.fromChain,
-        fromToken: req.fromToken,
-        toToken: req.toToken,
-        amountIn: req.fromAmount,
-        amountOut: swapQuote.amountOut,
-        protocol: swap.id,
-      },
-      {
-        type: 'transfer',
-        chainId: req.fromChain,
-        fromToken: req.toToken,
-        toToken: req.toToken,
-        amountIn: swapQuote.amountOut,
-        amountOut: swapQuote.amountOut,
-        protocol: 'transfer',
-      },
-    ],
+    route: hops,
     estimatedOutput: swapQuote.amountOut,
     estimatedTimeSeconds: swapQuote.timeSeconds,
     estimatedFee: swapQuote.fee,
     reliability: swapQuote.reliability,
+    liquidityScore: swapQuote.liquidityScore,
+    priceImpactBps: swapQuote.priceImpactBps,
+    gasCost: swapQuote.gasCost,
+    available: swapQuote.available ?? swapQuote.amountOut > 0n,
     adapterId: swap.id,
-    transactionRequest: swapTx,
-    hopTransactionRequests: [swapTx, transferTx],
+    transactionRequest: txs[0] ?? swapTx,
+    hopTransactionRequests: txs,
   };
 }
 
@@ -124,24 +150,44 @@ async function buildCrossChainCandidate(
   let time = 0;
   let fee = 0n;
   let reliability = 1;
+  let swapQuote: SwapQuote | undefined;
+  const bridgeSourceToken = bridge.sourceTokenFor?.({
+    fromChain: req.fromChain,
+    toChain: req.toChain,
+    tokenOut: req.toToken,
+  }) ?? req.toToken;
 
-  if (req.fromToken !== req.toToken && swapAdapter) {
-    const swapQuote = await swapAdapter.quoteSwap({
+  if (req.fromToken !== bridgeSourceToken && swapAdapter) {
+    const swapRequest: QuoteRequest = { ...req, toChain: req.fromChain, toToken: bridgeSourceToken };
+    if (req.fromToken !== 'native' && swapAdapter.buildApprovalTransaction) {
+      hops.push({
+        type: 'approval',
+        chainId: req.fromChain,
+        fromToken: req.fromToken,
+        toToken: req.fromToken,
+        amountIn: req.fromAmount,
+        amountOut: req.fromAmount,
+        protocol: swapAdapter.id,
+        actionFor: 'swap',
+      });
+      txs.push(await swapAdapter.buildApprovalTransaction(req, req.fromAmount));
+    }
+    swapQuote = await swapAdapter.quoteSwap({
       chain: req.fromChain,
       tokenIn: req.fromToken,
-      tokenOut: req.toToken,
+      tokenOut: bridgeSourceToken,
       amountIn: req.fromAmount,
     });
     hops.push({
       type: 'swap',
       chainId: req.fromChain,
       fromToken: req.fromToken,
-      toToken: req.toToken,
+      toToken: bridgeSourceToken,
       amountIn: req.fromAmount,
       amountOut: swapQuote.amountOut,
       protocol: swapAdapter.id,
     });
-    txs.push(await swapAdapter.buildSwapTransaction(req, swapQuote));
+    txs.push(await swapAdapter.buildSwapTransaction(swapRequest, swapQuote));
     input = swapQuote.amountOut;
     time += swapQuote.timeSeconds;
     fee += swapQuote.fee;
@@ -151,24 +197,37 @@ async function buildCrossChainCandidate(
   const bridgeQuote = await bridge.quoteBridge({
     fromChain: req.fromChain,
     toChain: req.toChain,
-    tokenIn: req.toToken,
+    tokenIn: bridgeSourceToken,
     tokenOut: req.toToken,
     amountIn: input,
   });
+  // The bridge locks the post-swap token (the destination token) on the source
+  // chain, so the signable tx is derived from a request whose fromToken is the
+  // bridged asset at the post-swap amount.
+  const bridgeRequest: QuoteRequest = { ...req, fromToken: bridgeSourceToken, fromAmount: input };
+  if (bridgeSourceToken !== 'native' && bridge.buildApprovalTransaction) {
+    hops.push({
+      type: 'approval',
+      chainId: req.fromChain,
+      fromToken: bridgeSourceToken,
+      toToken: bridgeSourceToken,
+      amountIn: input,
+      amountOut: input,
+      protocol: bridge.id,
+      actionFor: 'bridge',
+    });
+    txs.push(await bridge.buildApprovalTransaction(bridgeRequest, input));
+  }
   hops.push({
     type: 'bridge',
     fromChain: req.fromChain,
     toChain: req.toChain,
-    fromToken: req.toToken,
+    fromToken: bridgeSourceToken,
     toToken: req.toToken,
     amountIn: input,
     amountOut: bridgeQuote.amountOut,
     protocol: bridge.id,
   });
-  // The bridge locks the post-swap token (the destination token) on the source
-  // chain, so the signable tx is derived from a request whose fromToken is the
-  // bridged asset at the post-swap amount.
-  const bridgeRequest: QuoteRequest = { ...req, fromToken: req.toToken, fromAmount: input };
   txs.push(await bridge.buildBridgeTransaction(bridgeRequest, bridgeQuote));
   time += bridgeQuote.timeSeconds;
   fee += bridgeQuote.fee;
@@ -180,6 +239,12 @@ async function buildCrossChainCandidate(
     estimatedTimeSeconds: time,
     estimatedFee: fee,
     reliability,
+    liquidityScore: Math.min(swapQuote?.liquidityScore ?? 1, bridgeQuote.liquidityScore ?? 1),
+    priceImpactBps: (swapQuote?.priceImpactBps ?? 0) + (bridgeQuote.priceImpactBps ?? 0),
+    gasCost: (swapQuote?.gasCost ?? 0n) + (bridgeQuote.gasCost ?? 0n),
+    bridgeFee: bridgeQuote.fee,
+    available: (swapQuote?.available ?? swapQuote?.amountOut !== 0n) && (bridgeQuote.available ?? bridgeQuote.amountOut !== 0n),
+    providerMetadata: bridgeQuote.metadata,
     adapterId: bridge.id,
     transactionRequest: txs[0],
     hopTransactionRequests: txs,
@@ -201,8 +266,12 @@ export async function getQuote(
   const candidates: CandidateRoute[] = [];
 
   for (const provider of deps.routeProviders ?? []) {
-    const fromProvider = await provider.getCandidateRoutes(req);
-    candidates.push(...fromProvider);
+    try {
+      const fromProvider = await provider.getCandidateRoutes(req);
+      candidates.push(...fromProvider.filter((candidate) => candidate.available !== false));
+    } catch {
+      // One provider outage must not prevent other routes from being quoted.
+    }
   }
 
   if (req.fromChain === req.toChain) {
@@ -210,24 +279,48 @@ export async function getQuote(
       candidates.push(directCandidate(req));
     } else {
       for (const swap of deps.swapAdapters.filter((a) => a.supportedChains.includes(req.fromChain))) {
-        candidates.push(await buildSameChainCandidate(req, swap));
+        try {
+          const candidate = await buildSameChainCandidate(req, swap);
+          if (candidate.available !== false) candidates.push(candidate);
+        } catch {
+          // Invalid/unavailable adapter is skipped.
+        }
       }
     }
   } else {
-    for (const bridge of deps.bridgeAdapters.filter(
-      (a) =>
-        a.supportedFromChains.includes(req.fromChain) && a.supportedToChains.includes(req.toChain),
-    )) {
-      const swapAdapter = deps.swapAdapters.find((a) => a.supportedChains.includes(req.fromChain));
-      // A cross-chain route needs a way to convert the source asset to the
-      // bridge token on the source chain; without it the route is invalid.
-      if (req.fromToken === req.toToken || swapAdapter) {
-        candidates.push(await buildCrossChainCandidate(req, bridge, swapAdapter));
+    const bridges = deps.bridgeAdapters.filter(
+      (a) => a.supportedFromChains.includes(req.fromChain) && a.supportedToChains.includes(req.toChain),
+    );
+    for (const bridge of bridges) {
+      if (bridge.healthCheck) {
+        try {
+          const health = await bridge.healthCheck();
+          if (!health.available) continue;
+        } catch {
+          continue;
+        }
+      }
+      const swaps = deps.swapAdapters.filter((a) => a.supportedChains.includes(req.fromChain));
+      // Evaluate every compatible swap × bridge combination. A bridge may
+      // carry the source token directly, otherwise a swap is required.
+      const bridgeSourceToken = bridge.sourceTokenFor?.({
+        fromChain: req.fromChain,
+        toChain: req.toChain,
+        tokenOut: req.toToken,
+      }) ?? req.toToken;
+      const compatibleSwaps = req.fromToken === bridgeSourceToken ? [undefined] : swaps;
+      for (const swapAdapter of compatibleSwaps) {
+        try {
+          const candidate = await buildCrossChainCandidate(req, bridge, swapAdapter);
+          if (candidate.available !== false) candidates.push(candidate);
+        } catch {
+          // Continue evaluating other providers.
+        }
       }
     }
   }
 
-  const ranked = rankRoutes(candidates, req);
+  const ranked = rankRoutes(candidates, req, deps.weights, deps.telemetry);
   const bestRoute = ranked[0];
   if (!bestRoute) {
     throw routeNotFound({ request: req });

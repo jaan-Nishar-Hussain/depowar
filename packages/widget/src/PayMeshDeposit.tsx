@@ -94,11 +94,12 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
     setStatus('quoting');
     setError(null);
     try {
-      const [srcDecimals, toDecimals] = await Promise.all([
-        resolveTokenDecimals(config.fromToken),
-        resolveTokenDecimals(config.toToken),
-      ]);
-      setDestDecimals(toDecimals);
+      if (![11155111, 84532].includes(chain!.id)) {
+        throw new Error('Connect to Ethereum Sepolia or Base Sepolia to send this deposit.');
+      }
+      const sourceToken = config.fromTokenByChain?.[chain!.id] ?? config.fromToken ?? 'native';
+      const srcDecimals = await resolveTokenDecimals(sourceToken);
+      setDestDecimals(config.toTokenDecimals ?? 6);
       const fromAmount = toBaseUnits(amount, srcDecimals);
 
       const deposit = await sdk.createDepositIntent({
@@ -110,7 +111,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
       const result = await sdk.getQuote({
         depositId: deposit.depositId,
         fromChain: chain!.id,
-        fromToken: config.fromToken ?? 'native',
+        fromToken: sourceToken,
         fromAmount,
         fromAddress: address,
         slippageBps: config.defaultSlippageBps,
@@ -139,6 +140,9 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
       // Sign each hop in order; wait for the previous hop to confirm on-chain
       // before signing the next (the transfer leg needs the swap output).
       for (let i = 0; i < txs.length; i++) {
+        if (txs[i]!.chainId !== undefined && txs[i]!.chainId !== chain!.id) {
+          throw new Error('Wallet network changed while signing the route. Reconnect to the source network.');
+        }
         const hash = await sdk.signAndSend(walletClient, txs[i]);
         await sdk.reportTransaction(quote.quoteId, i, hash);
         if (i < txs.length - 1) {
@@ -203,7 +207,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
             type="button"
             className="pm-btn pm-btn--primary"
             onClick={startDeposit}
-            disabled={status === 'quoting' || !amount}
+            disabled={status === 'quoting' || !amount || ![11155111, 84532].includes(chain!.id)}
           >
             {status === 'quoting' ? 'Quoting…' : 'Deposit'}
           </button>

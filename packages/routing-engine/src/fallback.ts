@@ -27,6 +27,8 @@ export async function getFallbackQuote(
     swapAdapters,
     bridgeAdapters,
     routeProviders,
+    telemetry: deps.telemetry,
+    weights: deps.weights,
   });
   return { best, alternates };
 }

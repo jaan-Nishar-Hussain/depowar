@@ -2,6 +2,8 @@ import { randomBytes } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { hashApiKey } from '../src/api-key';
 
+const POLYGON_AMOY_USDC = '0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582';
+
 const prisma = new PrismaClient();
 
 async function main() {
@@ -31,8 +33,8 @@ async function main() {
       clientId: client.id,
       walletAddress: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
       settlementType: 'EOA',
-      preferredChainId: 84532,
-      preferredToken: 'USDC',
+      preferredChainId: 80002,
+      preferredToken: POLYGON_AMOY_USDC,
     },
   });
 
@@ -41,8 +43,8 @@ async function main() {
       clientId: client.id,
       recipientId: recipient.id,
       idempotencyKey: 'seed-intent-1',
-      toChainId: 84532,
-      toToken: 'USDC',
+      toChainId: 80002,
+      toToken: POLYGON_AMOY_USDC,
       minAmount: '1000000',
       maxAmount: '100000000',
     },

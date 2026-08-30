@@ -1,4 +1,4 @@
-import type { CandidateRoute, QuoteRequest } from '../../types';
+import type { CandidateRoute, QuoteRequest, TransactionRequest } from '../../types';
 import type { RouteProvider } from '../types';
 
 export interface RouteApiAdapterOptions {
@@ -14,6 +14,14 @@ interface ApiRoute {
   timeSeconds?: number;
   reliability?: number;
   steps?: unknown[];
+  transactionRequest?: TransactionRequest;
+  hopTransactionRequests?: TransactionRequest[];
+  liquidityScore?: number;
+  priceImpactBps?: number;
+  gasCost?: string;
+  available?: boolean;
+  riskScore?: number;
+  metadata?: Record<string, string | number | boolean>;
 }
 
 interface ApiResponse {
@@ -22,6 +30,8 @@ interface ApiResponse {
   fee?: string;
   timeSeconds?: number;
   reliability?: number;
+  transactionRequest?: TransactionRequest;
+  hopTransactionRequests?: TransactionRequest[];
 }
 
 /**
@@ -58,8 +68,16 @@ export function createRouteApiAdapter(options: RouteApiAdapterOptions): RoutePro
         route: (r.steps ?? []) as CandidateRoute['route'],
         estimatedOutput: BigInt(r.outputAmount),
         estimatedTimeSeconds: r.timeSeconds ?? 60,
-        estimatedFee: r.fee ? BigInt(Math.round(Number(r.fee))) : 0n,
+        estimatedFee: r.fee ? BigInt(r.fee) : 0n,
         reliability: r.reliability ?? 0.9,
+        liquidityScore: r.liquidityScore,
+        priceImpactBps: r.priceImpactBps,
+        gasCost: r.gasCost ? BigInt(r.gasCost) : undefined,
+        available: r.available ?? true,
+        riskScore: r.riskScore,
+        providerMetadata: r.metadata,
+        transactionRequest: r.transactionRequest,
+        hopTransactionRequests: r.hopTransactionRequests,
         adapterId: r.id ?? `${id}-${i}`,
       }));
     } finally {

@@ -50,7 +50,12 @@ export async function enqueueMonitor(
 ): Promise<void> {
   const queue = new Queue(QUEUE_TX_MONITOR, { connection: { url: ctx.env.REDIS_URL, maxRetriesPerRequest: null } });
   try {
-    await queue.add('monitor', { transactionId });
+    await queue.add('monitor', { transactionId }, {
+      attempts: 10,
+      backoff: { type: 'exponential', delay: 2_000 },
+      removeOnComplete: 100,
+      removeOnFail: 100,
+    });
   } finally {
     await queue.close();
   }

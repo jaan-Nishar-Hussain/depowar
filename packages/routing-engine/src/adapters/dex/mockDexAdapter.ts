@@ -10,6 +10,7 @@ export interface MockDexAdapterOptions {
 }
 
 const DEX_ABI = readArtifact('MockDEX').abi;
+const ERC20_APPROVE_ABI = readArtifact('MockERC20').abi;
 
 /**
  * On-chain same-chain swap adapter against the MockDEX constant-product
@@ -63,10 +64,28 @@ export function createMockDexAdapter(options: MockDexAdapterOptions): SwapAdapte
     };
   }
 
+  async function buildApprovalTransaction(req: QuoteRequest, amount: bigint): Promise<TransactionRequest> {
+    if (req.fromToken === 'native') {
+      throw new Error('Native input does not require an ERC-20 approval');
+    }
+    return {
+      to: req.fromToken as Address,
+      data: encodeFunctionData({
+        abi: ERC20_APPROVE_ABI,
+        functionName: 'approve',
+        args: [options.dexAddress, amount],
+      }),
+      value: 0n,
+      chainId: req.fromChain,
+      from: req.fromAddress,
+    };
+  }
+
   return {
     id: `mock-dex-${options.dexAddress.toLowerCase().slice(0, 10)}`,
     supportedChains,
     quoteSwap,
     buildSwapTransaction,
+    buildApprovalTransaction,
   };
 }

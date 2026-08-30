@@ -14,6 +14,11 @@ export interface MockBridgeAdapterOptions {
 }
 
 const BRIDGE_ABI = readArtifact('MockBridge').abi;
+const ERC20_APPROVE_ABI = [{
+  type: 'function', name: 'approve', stateMutability: 'nonpayable',
+  inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }],
+  outputs: [{ name: '', type: 'bool' }],
+}] as const;
 
 /**
  * Cross-chain bridge adapter against the MockBridge. The source-side
@@ -62,11 +67,29 @@ export function createMockBridgeAdapter(options: MockBridgeAdapterOptions): Brid
     };
   }
 
+  async function buildApprovalTransaction(req: QuoteRequest, amount: bigint): Promise<TransactionRequest> {
+    if (req.fromToken === 'native') {
+      throw new Error('Native input does not require an ERC-20 approval');
+    }
+    return {
+      to: req.fromToken as Address,
+      data: encodeFunctionData({
+        abi: ERC20_APPROVE_ABI,
+        functionName: 'approve',
+        args: [options.bridgeAddress, amount],
+      }),
+      value: 0n,
+      chainId: req.fromChain,
+      from: req.fromAddress,
+    };
+  }
+
   return {
     id: `mock-bridge-${options.destChainId}-${options.bridgeAddress.toLowerCase().slice(0, 10)}`,
     supportedFromChains,
     supportedToChains,
     quoteBridge,
     buildBridgeTransaction,
+    buildApprovalTransaction,
   };
 }

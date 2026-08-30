@@ -2,13 +2,19 @@ import { Inject, Injectable } from '@nestjs/common';
 import { createPublicClient, http, type Address } from 'viem';
 import { AppEnv, getChain } from '@paymesh/config';
 import {
-  getQuote as engineGetQuote,
   routeNotFound,
   createMockDexAdapter,
   createMockBridgeAdapter,
+  createV2DexAdapter,
+  createUniswapV3Adapter,
+  createCctpAdapter,
+  createRouteApiAdapter,
+  createLifiRouteProvider,
+  RouteHandler,
   type Quote as EngineQuote,
   type QuoteRequest,
 } from '@paymesh/routing-engine';
+import { getToken } from '@paymesh/config';
 import { ENV } from '../common/tokens';
 import { viemChain } from '../common/chains';
 
@@ -22,10 +28,9 @@ export interface RoutingProvider {
 }
 
 /**
- * Default routing provider: wraps the routing engine with the MockDEX /
- * MockBridge adapters wired to the contract addresses configured in env.
- * For local dev these come from the Anvil deploy; on testnets they come from
- * the real testnet deploy.
+ * Default routing provider. Real Uniswap V3/V2-compatible DEX routers, CCTP,
+ * and external route APIs are supported; mock contracts are only used when
+ * explicitly configured.
  */
 @Injectable()
 export class DefaultRoutingProvider implements RoutingProvider {
@@ -42,32 +47,98 @@ export class DefaultRoutingProvider implements RoutingProvider {
         ? { dex: this.env.PAYMESH_BASE_SEPOLIA_DEX_ADDRESS, bridge: this.env.PAYMESH_BASE_SEPOLIA_BRIDGE_ADDRESS }
         : { dex: this.env.PAYMESH_DEX_ADDRESS, bridge: this.env.PAYMESH_BRIDGE_ADDRESS };
 
-    if (!source.dex || !source.bridge) {
-      throw routeNotFound({
-        reason: `routing contracts not configured for source chain ${req.fromChain}`,
-      });
-    }
-
     const chain = getChain(req.fromChain);
     const publicClient = createPublicClient({ chain: viemChain(req.fromChain), transport: http(chain.rpcUrl) });
 
-    const swapAdapter = createMockDexAdapter({
-      publicClient,
-      dexAddress: source.dex as Address,
-      chains: [req.fromChain],
-    });
-    const bridgeAdapter = createMockBridgeAdapter({
-      publicClient,
-      bridgeAddress: source.bridge as Address,
-      destChainId: this.env.PAYMESH_DEST_CHAIN_ID,
-      supportedFromChains: [req.fromChain],
-      supportedToChains: [req.toChain],
-    });
+    const routerAddress = req.fromChain === 11155111
+      ? this.env.PAYMESH_SEPOLIA_DEX_ROUTER_ADDRESS
+      : req.fromChain === 84532
+        ? this.env.PAYMESH_BASE_SEPOLIA_DEX_ROUTER_ADDRESS
+        : '';
+    const wrappedNative = req.fromChain === 11155111
+      ? this.env.PAYMESH_SEPOLIA_WETH_ADDRESS
+      : req.fromChain === 84532
+        ? this.env.PAYMESH_BASE_SEPOLIA_WETH_ADDRESS
+        : this.env.PAYMESH_WETH_ADDRESS;
 
-    const { best, alternates } = await engineGetQuote(req, {
-      swapAdapters: [swapAdapter],
-      bridgeAdapters: [bridgeAdapter],
+    const v3RouterAddress = req.fromChain === 11155111
+      ? this.env.PAYMESH_SEPOLIA_UNISWAP_V3_ROUTER_ADDRESS
+      : req.fromChain === 84532
+        ? this.env.PAYMESH_BASE_SEPOLIA_UNISWAP_V3_ROUTER_ADDRESS
+        : '';
+    const v3QuoterAddress = req.fromChain === 11155111
+      ? this.env.PAYMESH_SEPOLIA_UNISWAP_V3_QUOTER_ADDRESS
+      : req.fromChain === 84532
+        ? this.env.PAYMESH_BASE_SEPOLIA_UNISWAP_V3_QUOTER_ADDRESS
+        : '';
+    const swapAdapters = v3RouterAddress && v3QuoterAddress
+      ? [createUniswapV3Adapter({
+          publicClient,
+          routerAddress: v3RouterAddress as Address,
+          quoterAddress: v3QuoterAddress as Address,
+          chains: [req.fromChain],
+        })]
+      : routerAddress && wrappedNative
+        ? [createV2DexAdapter({
+          publicClient,
+          routerAddress: routerAddress as Address,
+          wrappedNative: wrappedNative as Address,
+          chains: [req.fromChain],
+        })]
+        : this.env.PAYMESH_ALLOW_MOCK_ROUTES && source.dex
+          ? [createMockDexAdapter({ publicClient, dexAddress: source.dex as Address, chains: [req.fromChain] })]
+          : [];
+    const sourceUsdc = getToken(req.fromChain, 'USDC')?.address;
+    const cctpMessenger = req.fromChain === 11155111
+      ? this.env.CCTP_SEPOLIA_TOKEN_MESSENGER_ADDRESS
+      : req.fromChain === 84532
+        ? this.env.CCTP_BASE_SEPOLIA_TOKEN_MESSENGER_ADDRESS
+        : '';
+    const destinationUsdc = getToken(this.env.PAYMESH_DEST_CHAIN_ID, 'USDC')?.address;
+    const bridgeAdapters = this.env.CCTP_ENABLED && cctpMessenger && sourceUsdc && destinationUsdc
+      ? [createCctpAdapter({
+          publicClient,
+          tokenMessenger: cctpMessenger as Address,
+          sourceUsdc: sourceUsdc as Address,
+          destinationUsdc: destinationUsdc as Address,
+          sourceChainId: req.fromChain,
+          destinationChainId: this.env.PAYMESH_DEST_CHAIN_ID,
+          destinationDomain: 7,
+          maxFee: this.env.CCTP_MAX_FEE,
+          minFinalityThreshold: this.env.CCTP_MIN_FINALITY_THRESHOLD,
+        })]
+      : this.env.PAYMESH_ALLOW_MOCK_ROUTES && source.bridge
+        ? [createMockBridgeAdapter({
+            publicClient,
+            bridgeAddress: source.bridge as Address,
+            destChainId: this.env.PAYMESH_DEST_CHAIN_ID,
+            supportedFromChains: [req.fromChain],
+            supportedToChains: [req.toChain],
+          })]
+        : [];
+
+    const externalProviders = this.env.ROUTE_PROVIDER_URLS
+      .split(',')
+      .map((url) => url.trim())
+      .filter(Boolean)
+      .map((baseUrl) => createRouteApiAdapter({ baseUrl, timeoutMs: this.env.ROUTE_PROVIDER_TIMEOUT_MS }));
+    if (this.env.LIFI_ENABLED) {
+      externalProviders.push(createLifiRouteProvider({
+        baseUrl: this.env.LIFI_API_URL,
+        apiKey: this.env.LIFI_API_KEY || undefined,
+        integrator: this.env.LIFI_INTEGRATOR,
+        timeoutMs: this.env.ROUTE_PROVIDER_TIMEOUT_MS,
+      }));
+    }
+
+    const handler = new RouteHandler({
+      dependencies: {
+        swapAdapters,
+        bridgeAdapters,
+        routeProviders: externalProviders,
+      },
     });
+    const { best, alternates } = await handler.findBestRoute(req);
 
     return { best, alternates };
   }

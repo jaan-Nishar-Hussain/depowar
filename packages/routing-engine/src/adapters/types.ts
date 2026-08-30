@@ -5,6 +5,11 @@ export interface SwapQuote {
   fee: bigint;
   timeSeconds: number;
   reliability: number;
+  liquidityScore?: number;
+  priceImpactBps?: number;
+  gasCost?: bigint;
+  available?: boolean;
+  metadata?: Record<string, string | number | boolean>;
 }
 
 export interface BridgeQuote {
@@ -12,6 +17,11 @@ export interface BridgeQuote {
   fee: bigint;
   timeSeconds: number;
   reliability: number;
+  liquidityScore?: number;
+  priceImpactBps?: number;
+  gasCost?: bigint;
+  available?: boolean;
+  metadata?: Record<string, string | number | boolean>;
 }
 
 export interface SwapAdapter {
@@ -24,6 +34,8 @@ export interface SwapAdapter {
     amountIn: bigint;
   }): Promise<SwapQuote>;
   buildSwapTransaction(req: QuoteRequest, quote: SwapQuote): Promise<TransactionRequest>;
+  /** Optional ERC-20 approval transaction required before the swap. */
+  buildApprovalTransaction?(req: QuoteRequest, amount: bigint): Promise<TransactionRequest>;
 }
 
 export interface BridgeAdapter {
@@ -38,9 +50,26 @@ export interface BridgeAdapter {
     amountIn: bigint;
   }): Promise<BridgeQuote>;
   buildBridgeTransaction(req: QuoteRequest, quote: BridgeQuote): Promise<TransactionRequest>;
+  /** Optional ERC-20 approval transaction required before the bridge deposit. */
+  buildApprovalTransaction?(req: QuoteRequest, amount: bigint): Promise<TransactionRequest>;
+  /**
+   * Returns the source-chain representation of the asset that this bridge
+   * can carry. This is useful when destination token addresses differ from
+   * source token addresses (for example Circle USDC across CCTP domains).
+   */
+  sourceTokenFor?(req: { fromChain: number; toChain: number; tokenOut: string }): string;
+  healthCheck?(): Promise<{ available: boolean; reliability?: number; reason?: string }>;
 }
 
 export interface RouteProvider {
   readonly id: string;
   getCandidateRoutes(req: QuoteRequest): Promise<CandidateRoute[]>;
+}
+
+export interface ProviderTelemetry {
+  reliability?: number;
+  averageLatencyMs?: number;
+  p95LatencyMs?: number;
+  averageSlippageBps?: number;
+  riskScore?: number;
 }

@@ -9,7 +9,7 @@ export interface TransactionRequest {
 }
 
 export interface RouteHop {
-  type: 'swap' | 'bridge' | 'transfer';
+  type: 'approval' | 'swap' | 'bridge' | 'transfer';
   chainId?: number;
   fromChain?: number;
   toChain?: number;
@@ -18,6 +18,7 @@ export interface RouteHop {
   amountIn?: string;
   amountOut?: string;
   protocol?: string;
+  actionFor?: 'swap' | 'bridge' | 'transfer';
 }
 
 export interface QuoteResult {
@@ -30,6 +31,12 @@ export interface QuoteResult {
   estimatedFee: string;
   reliability: number;
   slippageBps: number;
+  liquidityScore?: number;
+  priceImpactBps?: number;
+  gasCost?: string;
+  bridgeFee?: string;
+  available?: boolean;
+  providerMetadata?: Record<string, string | number | boolean>;
   transactionRequest?: TransactionRequest;
   expiresAt: string;
   alternates: Array<{

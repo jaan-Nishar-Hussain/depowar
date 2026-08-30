@@ -9,6 +9,13 @@ The supported three-chain pilot is intentionally fixed to:
 
 Users can send from either source chain; recipient settlement is always on Polygon Amoy.
 
+The routing core is provider-independent: `RouteHandler` evaluates every
+compatible swap × bridge route, rejects unavailable providers, and ranks
+complete routes using output, cost, time, slippage, liquidity, reliability,
+and risk. External route APIs can be configured with `ROUTE_PROVIDER_URLS`.
+The real MVP path is Uniswap V3 USDT→USDC followed by Circle CCTP V2 USDC
+settlement. LI.FI remains an optional provider adapter and is not required.
+
 A non-custodial routing and settlement layer: a payer sends **any asset on any chain**, PayMesh finds the best route (swap + bridge + swap), and the recipient receives **exactly what they configured** — an EOA, a contract, or a specific token on a specific chain. PayMesh never holds funds; every hop is a sender-signed on-chain transaction.
 
 Full spec: [`docs/PRD.md`](docs/PRD.md).
@@ -24,7 +31,7 @@ packages/
   widget/     # <PayMeshDeposit/> React component (wagmi + viem)
   sdk/        # Headless TS client wrapping the API
   routing-engine/  # quote scoring, DEX/bridge adapters, fallback (the core IP)
-  contracts/  # Foundry project: DepositReceiver + MockERC20/MockDEX/MockBridge
+  contracts/  # Foundry project: settlement receiver + local test fixtures
   db/         # Prisma schema, migrations, seed
   config/     # zod env schemas, chain/token registries
   tsconfig/   # shared TS configs
@@ -53,7 +60,7 @@ pnpm dev:worker                            # job runner
 pnpm dev:web                               # widget host on :5173
 ```
 
-Seed output includes the API key and recipient id — put them in `apps/web/.env` (`VITE_API_KEY`, `VITE_RECIPIENT_ID`) and set the on-chain routing env in `.env`:
+Seed output includes the API key and recipient id — put them in `apps/web/.env` (`VITE_API_KEY`, `VITE_RECIPIENT_ID`). For public-testnet execution, configure a real route provider in `ROUTE_PROVIDER_URLS`; the mock addresses below are local-fixture settings:
 
 ```
 PAYMESH_DEX_ADDRESS=0x...                 # from deploy:anvil output
@@ -98,8 +105,8 @@ Errors always return `{ error: { code, message, userMessage, details }, requestI
 
 1. **Widget** creates a deposit intent and quotes a route (`GET /quote`).
 2. The route returns **one signable transaction per hop** (`hopTransactionRequests`).
-3. The sender signs hop 0 (e.g. swap) and reports the tx hash; the **worker** monitors it.
-4. Each next hop is signed in turn; the terminal bridge hop is settled on the destination by the relayer (mocked by `MockBridge` in the testnet stack).
+3. The sender signs hop 0 (usually an ERC-20 approval), then the swap/bridge action, and reports each tx hash; the **worker** monitors them.
+4. Each next hop is signed in turn. For a real provider, the worker waits for the recipient's destination balance to increase before marking the deposit settled; only local mock tests use the mock relayer.
 5. Lifecycle events (`quote.ready`, `tx.submitted`, `tx.confirmed`, `deposit.settled`, `deposit.failed`) are HMAC-signed and delivered to registered webhooks.
 
 ## Deploy
@@ -111,7 +118,11 @@ Errors always return `{ error: { code, message, userMessage, details }, requestI
 ## Notes / gotchas
 
 - Amounts are stored as `Decimal(78,0)` strings (raw base units can exceed Postgres `bigint`).
-- Anvil is the default RPC for all chains; set `ALCHEMY_*_RPC` to exercise real testnets.
+- Public testnets require explicit RPC URLs and real provider/asset addresses; Anvil and the MockDEX/MockBridge stack are deterministic local fixtures, not a real bridge.
+- For a real USDT → Polygon USDC flow, configure a verified source USDT token,
+  a live Uniswap V3 router/quoter and pool, and CCTP V2. The flow is
+  `USDT → Uniswap V3 → native Circle USDC → CCTP → Polygon Amoy USDC`.
+  Keep `PAYMESH_ALLOW_MOCK_ROUTES=false`. LI.FI is optional.
 - `@paymesh/tsconfig` must be a devDependency of any package that extends it (pnpm linking).
 - Vitest transforms `src` with esbuild (no decorator metadata) — the API **e2e** suite runs against the tsc-compiled `dist`; unit tests run against `src`.
 - Synpress 4.x changed its API (`testWithSynpress`/`defineWalletSetup` from the package root, `metaMaskFixtures`/`MetaMask` from `/playwright`); `playwright-core` is pinned via pnpm overrides.
