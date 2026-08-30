@@ -2,13 +2,13 @@
 
 ## Product Requirements Document & End-to-End Build Guide
 
-*Working name: **PayMesh** (rename freely — every reference below is find/replace-able). This PRD specs a standalone product in the same category as Trustware/LI.FI/Socket/Rango: a non-custodial routing and settlement layer that lets a sender pay in any asset on any chain while the recipient gets exactly what they configured. No agent-specific layer — this is the core deposit-layer product only.*
+*Product name: **Depowar**. This PRD specifies a standalone product in the same category as Trustware/LI.FI/Socket/Rango: a non-custodial routing and settlement layer that lets a sender pay in any asset on any chain while the recipient gets exactly what they configured. No agent-specific layer — this is the core deposit-layer product only.*
 
 ---
 
 ## 1. Executive Summary
 
-PayMesh is a non-custodial deposit and settlement layer. A payer sends whatever asset they already hold, on whatever chain they're on. PayMesh finds the best route (swap + bridge + swap), executes it, and delivers the recipient's chosen asset to the recipient's chosen destination — a wallet, a smart contract, or an exchange deposit address. PayMesh never takes custody of funds; every hop executes on-chain through existing DEX and bridge liquidity.
+Depowar is a non-custodial deposit and settlement layer. A payer sends whatever asset they already hold, on whatever chain they're on. Depowar finds the best route (swap + bridge + swap), executes it, and delivers the recipient's chosen asset to the recipient's chosen destination — a wallet, a smart contract, or an exchange deposit address. Depowar never takes custody of funds; every hop executes on-chain through existing DEX and bridge liquidity.
 
 Three integration surfaces, all backed by the same routing core:
 - **Widget** — drop-in React component for a hosted deposit UI.
@@ -35,7 +35,7 @@ This document covers problem framing, goals, personas, the full feature set, API
 |---|---|
 | Universal acceptance | N chains / M tokens supported at launch (target: 3 EVM testnets → 5+ EVM mainnets in v1) |
 | Reliable settlement | ≥99% of routed deposits settle successfully within 2 minutes |
-| Non-custodial by design | Zero funds ever held in a PayMesh-controlled hot wallet at rest |
+| Non-custodial by design | Zero funds ever held in a Depowar-controlled hot wallet at rest |
 | Fast integration | A developer ships a working widget integration in under a day |
 | Observability | 100% of deposits traceable end-to-end via a single status API / webhook |
 | Uptime | 99.9% API uptime; alerting on any settlement SLA breach |
@@ -70,10 +70,10 @@ Given `(fromChain, fromToken, fromAmount, toChain, toToken, toAddress)`, query D
 Recipients define **where and how** they want to receive funds, independent of what the sender sent: an EOA, a smart contract call (e.g., deposit-into-vault), or a specific token on a specific chain. Changing the config takes effect on the next deposit — senders never need to know or care.
 
 ### 6.4 Non-Custodial Execution
-PayMesh never becomes a custodian. The sender signs; execution happens through on-chain calls to routers, DEXs, and bridge contracts. If PayMesh's backend ever needs to co-sign (e.g., a relayed meta-transaction), it uses a KMS-backed signer scoped to a single relay action, never holding user funds.
+Depowar never becomes a custodian. The sender signs; execution happens through on-chain calls to routers, DEXs, and bridge contracts. If Depowar's backend ever needs to co-sign (e.g., a relayed meta-transaction), it uses a KMS-backed signer scoped to a single relay action, never holding user funds.
 
 ### 6.5 Widget / Headless SDK / REST API
-- **Widget:** `<PayMeshDeposit config={...} />` — wallet detection, quoting, and execution handled for you.
+- **Widget:** the Depowar deposit widget — wallet detection, quoting, and execution handled for you.
 - **Headless SDK:** same `getQuote()` / `executeRoute()` primitives, no UI opinions.
 - **REST API:** for server-side integrations and any custody/signing stack.
 
@@ -230,7 +230,7 @@ TX Monitor detects hop 2 (bridge) revert or timeout
 - Pluggable transaction screening hook (Chainalysis/TRM-style) run against source and destination addresses before route execution.
 - Deny-list for sanctioned jurisdictions/addresses, checked pre-quote.
 - Transaction history export for recipients (for their own tax/accounting needs).
-- Because PayMesh is non-custodial, it never holds funds at rest — this materially reduces (but does not eliminate) money-transmission exposure. **Get real legal review before mainnet launch; this PRD is not legal advice.**
+- Because Depowar is non-custodial, it never holds funds at rest — this materially reduces (but does not eliminate) money-transmission exposure. **Get real legal review before mainnet launch; this PRD is not legal advice.**
 
 ---
 

@@ -28,7 +28,7 @@ apps/
   worker/     # BullMQ consumers: tx-monitor, bridge settlement, fallback, webhook dispatch
 packages/
   api/        # NestJS REST server (auth, quotes, deposit intents, status, webhooks, screening)
-  widget/     # <PayMeshDeposit/> React component (wagmi + viem)
+  widget/     # React deposit widget (wagmi + viem)
   sdk/        # Headless TS client wrapping the API
   routing-engine/  # quote scoring, DEX/bridge adapters, fallback (the core IP)
   contracts/  # Foundry project: settlement receiver + local test fixtures
