@@ -6,6 +6,8 @@ import { wagmiConfig } from './lib/wagmi';
 const queryClient = new QueryClient();
 
 function DepositConfigCard() {
+  const paymentAsset = (import.meta.env.VITE_PAYMENT_ASSET ?? 'USDC').toUpperCase();
+  const isUsdt = paymentAsset === 'USDT';
   const config = {
     apiUrl: import.meta.env.VITE_API_URL ?? 'http://localhost:4000',
     apiKey: import.meta.env.VITE_API_KEY ?? '',
@@ -14,10 +16,15 @@ function DepositConfigCard() {
     toToken: import.meta.env.VITE_TO_TOKEN ?? '0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582',
     toTokenDecimals: Number(import.meta.env.VITE_TO_TOKEN_DECIMALS ?? 6),
     fromToken: import.meta.env.VITE_FROM_TOKEN ?? 'native',
-    fromTokenByChain: {
-      11155111: import.meta.env.VITE_SEPOLIA_USDT ?? import.meta.env.VITE_FROM_TOKEN ?? 'native',
-      84532: import.meta.env.VITE_BASE_SEPOLIA_USDT ?? import.meta.env.VITE_FROM_TOKEN ?? 'native',
-    },
+    fromTokenByChain: isUsdt
+      ? {
+          11155111: import.meta.env.VITE_SEPOLIA_USDT ?? import.meta.env.VITE_FROM_TOKEN ?? 'native',
+          84532: import.meta.env.VITE_BASE_SEPOLIA_USDT ?? import.meta.env.VITE_FROM_TOKEN ?? 'native',
+        }
+      : {
+          11155111: import.meta.env.VITE_SEPOLIA_USDC ?? import.meta.env.VITE_FROM_TOKEN ?? 'native',
+          84532: import.meta.env.VITE_BASE_SEPOLIA_USDC ?? import.meta.env.VITE_FROM_TOKEN ?? 'native',
+        },
   };
   return <PayMeshDeposit config={config} />;
 }

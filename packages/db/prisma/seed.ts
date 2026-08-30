@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { hashApiKey } from '../src/api-key';
 
 const POLYGON_AMOY_USDC = '0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582';
+const POLYGON_AMOY_RECIPIENT = '0xDA1Ec5f29E1f9119753beD3Fb589e69d0A71aE19';
 
 const prisma = new PrismaClient();
 
@@ -31,7 +32,7 @@ async function main() {
   const recipient = await prisma.recipient.create({
     data: {
       clientId: client.id,
-      walletAddress: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+      walletAddress: POLYGON_AMOY_RECIPIENT,
       settlementType: 'EOA',
       preferredChainId: 80002,
       preferredToken: POLYGON_AMOY_USDC,
