@@ -1,7 +1,7 @@
-# PayMesh — Universal Deposit Layer
+# Depowar — Universal Deposit Layer
 ## Product Requirements Document & End-to-End Build Guide
 
-*Working name: **PayMesh** (rename freely — every reference below is find/replace-able). This PRD specs a standalone product in the same category as Trustware/LI.FI/Socket/Rango: a non-custodial routing and settlement layer that lets a sender pay in any asset on any chain while the recipient gets exactly what they configured. No agent-specific layer — this is the core deposit-layer product only.*
+*Product name: **Depowar**. This PRD specifies a standalone product in the same category as Trustware/LI.FI/Socket/Rango: a non-custodial routing and settlement layer that lets a sender pay in any asset on any chain while the recipient gets exactly what they configured. No agent-specific layer — this is the core deposit-layer product only.*
 
 ---
 

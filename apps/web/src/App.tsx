@@ -36,7 +36,7 @@ export function App() {
         <div className="min-h-screen bg-slate-950 text-slate-100">
           <div className="mx-auto max-w-2xl px-6 py-10">
             <header className="mb-8">
-              <h1 className="text-3xl font-bold tracking-tight">PayMesh</h1>
+              <h1 className="text-3xl font-bold tracking-tight">Depowar</h1>
               <p className="mt-1 text-slate-400">Universal deposit layer — pay in any asset, settle anywhere.</p>
             </header>
             <DepositConfigCard />

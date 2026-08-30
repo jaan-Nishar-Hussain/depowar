@@ -1,4 +1,4 @@
-# PayMesh — Universal Deposit Layer
+# Depowar — Universal Deposit Layer
 
 ## Current testnet scope
 
@@ -16,7 +16,7 @@ and risk. External route APIs can be configured with `ROUTE_PROVIDER_URLS`.
 The real MVP path is Uniswap V3 USDT→USDC followed by Circle CCTP V2 USDC
 settlement. LI.FI remains an optional provider adapter and is not required.
 
-A non-custodial routing and settlement layer: a payer sends **any asset on any chain**, PayMesh finds the best route (swap + bridge + swap), and the recipient receives **exactly what they configured** — an EOA, a contract, or a specific token on a specific chain. PayMesh never holds funds; every hop is a sender-signed on-chain transaction.
+A non-custodial routing and settlement layer: a payer sends **any asset on any chain**, Depowar finds the best route (swap + bridge + swap), and the recipient receives **exactly what they configured** — an EOA, a contract, or a specific token on a specific chain. Depowar never holds funds; every hop is a sender-signed on-chain transaction.
 
 Full spec: [`docs/PRD.md`](docs/PRD.md).
 

@@ -6,6 +6,6 @@ export class HealthController {
   @Get()
   @Public()
   health() {
-    return { status: 'ok', service: 'paymesh-api', time: new Date().toISOString() };
+    return { status: 'ok', service: 'depowar-api', time: new Date().toISOString() };
   }
 }

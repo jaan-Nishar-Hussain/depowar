@@ -72,7 +72,7 @@ async function main(): Promise<void> {
   await recoverPendingSettlements(ctx);
 
   // eslint-disable-next-line no-console
-  console.log(`PayMesh worker listening on ${workers.length} queues (env=${env.APP_ENV})`);
+  console.log(`Depowar worker listening on ${workers.length} queues (env=${env.APP_ENV})`);
 
   const shutdown = async () => {
     // eslint-disable-next-line no-console

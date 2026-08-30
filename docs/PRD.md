@@ -1,4 +1,4 @@
-# PayMesh — Universal Deposit Layer
+# Depowar — Universal Deposit Layer
 
 ## Product Requirements Document & End-to-End Build Guide
 

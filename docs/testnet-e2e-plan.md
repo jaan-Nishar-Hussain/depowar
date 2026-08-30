@@ -1,8 +1,8 @@
-# PayMesh three-chain testnet plan
+# Depowar three-chain testnet plan
 
 ## Target flow
 
-PayMesh supports one controlled pilot topology:
+Depowar supports one controlled pilot topology:
 
 ```text
 Ethereum Sepolia (11155111) ─┐
