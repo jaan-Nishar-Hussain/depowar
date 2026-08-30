@@ -51,8 +51,11 @@ export async function enqueueMonitor(
   const queue = new Queue(QUEUE_TX_MONITOR, { connection: { url: ctx.env.REDIS_URL, maxRetriesPerRequest: null } });
   try {
     await queue.add('monitor', { transactionId }, {
-      attempts: 10,
-      backoff: { type: 'exponential', delay: 2_000 },
+      // Circle attestations can take several minutes on testnet. Keep the
+      // monitor alive for roughly one hour instead of exhausting retries
+      // while the source burn is still valid and awaiting attestation.
+      attempts: 120,
+      backoff: { type: 'fixed', delay: 30_000 },
       removeOnComplete: 100,
       removeOnFail: 100,
     });

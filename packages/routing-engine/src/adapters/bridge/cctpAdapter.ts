@@ -72,9 +72,10 @@ export function createCctpAdapter(options: CctpAdapterOptions): BridgeAdapter {
       return { amountOut: 0n, fee: req.amountIn, timeSeconds: 0, reliability: 0, available: false };
     }
 
-    let fee = options.maxFee ?? 0n;
+    const configuredMaxFee = options.maxFee ?? 0n;
+    let minimumFee = 0n;
     try {
-      fee = await options.publicClient.readContract({
+      minimumFee = await options.publicClient.readContract({
         address: options.tokenMessenger,
         abi: TOKEN_MESSENGER_V2_ABI,
         functionName: 'getMinFeeAmount',
@@ -85,6 +86,14 @@ export function createCctpAdapter(options: CctpAdapterOptions): BridgeAdapter {
       // configured maxFee remains the explicit fallback in that case.
     }
 
+    // Fast transfers require a non-zero fee ceiling. Some TokenMessenger
+    // deployments report a zero on-chain minimum even though Iris rejects a
+    // zero-fee fast burn, so retain the configured ceiling for the calldata.
+    const fee = finality <= 1000
+      ? (configuredMaxFee > minimumFee ? configuredMaxFee : minimumFee)
+      : minimumFee;
+    const fastFeeConfigured = finality > 1000 || fee > 0n;
+
     return {
       amountOut: req.amountIn - (fee > req.amountIn ? req.amountIn : fee),
       fee,
@@ -92,7 +101,7 @@ export function createCctpAdapter(options: CctpAdapterOptions): BridgeAdapter {
       reliability: 0.995,
       liquidityScore: 1,
       priceImpactBps: 0,
-      available: fee <= req.amountIn,
+      available: fastFeeConfigured && fee <= req.amountIn,
       metadata: {
         protocol: 'cctp-v2',
         sourceDomain: options.sourceChainId,

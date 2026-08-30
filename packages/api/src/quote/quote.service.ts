@@ -256,8 +256,8 @@ export class QuoteService {
     const finalRow = hops[hops.length - 1];
     if (finalRow && finalHash) {
       await this.queue.enqueue(QUEUE_TX_MONITOR, 'monitor', { transactionId: finalRow.id }, {
-        attempts: 10,
-        backoff: { type: 'exponential', delay: 2_000 },
+        attempts: 120,
+        backoff: { type: 'fixed', delay: 30_000 },
         removeOnComplete: 100,
         removeOnFail: 100,
       });
@@ -326,8 +326,8 @@ export class QuoteService {
       quote.depositIntentId,
     );
     await this.queue.enqueue(QUEUE_TX_MONITOR, 'monitor', { transactionId: hop.id }, {
-      attempts: 10,
-      backoff: { type: 'exponential', delay: 2_000 },
+      attempts: 120,
+      backoff: { type: 'fixed', delay: 30_000 },
       removeOnComplete: 100,
       removeOnFail: 100,
     });

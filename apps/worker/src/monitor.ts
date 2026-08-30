@@ -221,6 +221,16 @@ async function settleCctp(
   const relayerKey = ctx.env.RELAYER_PRIVATE_KEY as Hex;
   if (!relayerKey) throw new Error('RELAYER_PRIVATE_KEY is required for CCTP destination settlement');
   const account = privateKeyToAccount(relayerKey);
+  const destinationClient = createPublicClient({
+    chain: viemChain(destinationChain),
+    transport: http(destinationInfo.rpcUrl),
+  });
+  // Use the pending nonce so queued/in-flight relayer transactions are
+  // included. This avoids reusing a nonce that was already broadcast.
+  const nonce = await destinationClient.getTransactionCount({
+    address: account.address,
+    blockTag: 'pending',
+  });
   const walletClient = createWalletClient({
     account,
     chain: viemChain(destinationChain),
@@ -232,10 +242,7 @@ async function settleCctp(
     functionName: 'receiveMessage',
     args: [message, attestation],
     chain: viemChain(destinationChain),
-  });
-  const destinationClient = createPublicClient({
-    chain: viemChain(destinationChain),
-    transport: http(destinationInfo.rpcUrl),
+    nonce,
   });
   const receipt = await destinationClient.waitForTransactionReceipt({
     hash: settleHash,
