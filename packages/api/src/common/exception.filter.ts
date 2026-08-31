@@ -9,6 +9,7 @@ import {
 import { Response, Request } from 'express';
 import { ZodError } from 'zod';
 import { PayMeshError, ErrorCodes } from './errors';
+import { PayMeshRoutingError } from '@paymesh/routing-engine';
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -30,6 +31,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       code = exception.code;
       message = exception.message;
       userMessage = exception.userMessage;
+      details = exception.details;
+    } else if (exception instanceof PayMeshRoutingError) {
+      status = HttpStatus.SERVICE_UNAVAILABLE;
+      code = exception.code;
+      message = exception.message;
+      userMessage = 'No executable route is currently available for this asset pair. Try again shortly.';
       details = exception.details;
     } else if (exception instanceof ZodError) {
       status = HttpStatus.BAD_REQUEST;

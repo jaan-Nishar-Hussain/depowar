@@ -64,10 +64,18 @@ export function createLifiRouteProvider(options: LifiRouteProviderOptions = {}):
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 8_000);
     try {
-      const response = await fetch(`${baseUrl}/quote?${params.toString()}`, {
+      const endpoint = `${baseUrl}/quote?${params.toString()}`;
+      let usedPublicFallback = false;
+      let response = await fetch(endpoint, {
         signal: controller.signal,
         headers: options.apiKey ? { 'x-lifi-api-key': options.apiKey } : undefined,
       });
+      // LI.FI also exposes public quoting with provider rate limits. A stale
+      // key must not make every route disappear, so retry once without it.
+      if (response.status === 401 && options.apiKey) {
+        usedPublicFallback = true;
+        response = await fetch(endpoint, { signal: controller.signal });
+      }
       if (!response.ok) throw new Error(`LI.FI returned ${response.status}`);
       const quote = (await response.json()) as LifiQuote;
       const actionTx = quote.transactionRequest;
@@ -128,6 +136,7 @@ export function createLifiRouteProvider(options: LifiRouteProviderOptions = {}):
           provider: id,
           quoteId: quote.id ?? '',
           tool: quote.tool ?? quote.toolDetails?.name ?? 'unknown',
+          ...(usedPublicFallback ? { apiKeyFallback: true } : {}),
           statusUrl: `${baseUrl}/status`,
         },
         adapterId: id,

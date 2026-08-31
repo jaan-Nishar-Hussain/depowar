@@ -20,6 +20,22 @@ A non-custodial routing and settlement layer: a payer sends **any asset on any c
 
 Full spec: [`docs/PRD.md`](docs/PRD.md).
 
+## Mainnet rollout
+
+Mainnet support is configuration-driven for Ethereum (`1`), Base (`8453`),
+and Polygon PoS (`137`). The same route engine can combine Uniswap V3 for
+source-chain swaps with CCTP V2 for native USDC settlement, while LI.FI and
+additional HTTP providers can contribute alternative executable routes through
+`LIFI_ENABLED=true` or `ROUTE_PROVIDER_URLS`. Providers are scored together;
+an unavailable quote is discarded rather than treated as liquidity.
+
+Set `PAYMESH_DEST_CHAIN_ID=137`, use production RPCs, set
+`CCTP_IRIS_API_URL=https://iris-api.circle.com`, configure the destination
+MessageTransmitter and a dedicated relayer, then perform a small canary. Do
+not reuse testnet keys or enable mock routes in production. Mainnet protocol
+addresses are kept in `.env.example` and should be checked against the
+official deployment registries before launch.
+
 ## Repo layout (Turborepo 2 + pnpm)
 
 ```

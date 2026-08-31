@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { loadEnv, resetEnv, getChain, listChains, getTokens, DEFAULT_SLIPPAGE_BPS } from '../src';
+import { loadEnv, resetEnv, getChain, listChains, getToken, getTokens, DEFAULT_SLIPPAGE_BPS } from '../src';
 
 afterEach(() => resetEnv());
 
@@ -37,6 +37,16 @@ describe('chains', () => {
   it('throws for unknown chains', () => {
     expect(() => getChain(999)).toThrow();
   });
+
+  it('registers the mainnet canary chains', () => {
+    loadEnv({
+      ETHEREUM_MAINNET_RPC: 'https://eth.example',
+      BASE_MAINNET_RPC: 'https://base.example',
+      POLYGON_MAINNET_RPC: 'https://polygon.example',
+    });
+    expect(listChains().map((c) => c.id)).toEqual(expect.arrayContaining([1, 8453, 137]));
+    expect(getChain(137).testnet).toBe(false);
+  });
 });
 
 describe('tokens', () => {
@@ -46,6 +56,15 @@ describe('tokens', () => {
       expect(symbols).toContain('USDC');
       expect(symbols).toContain(id === 80002 ? 'POL' : 'ETH');
     }
+  });
+
+  it('registers verified mainnet USDC and USDT assets', () => {
+    loadEnv({});
+    expect(getToken(1, 'USDC')?.decimals).toBe(6);
+    expect(getToken(1, 'USDT')?.decimals).toBe(6);
+    expect(getToken(8453, 'USDC')?.address).toBe('0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913');
+    expect(getToken(137, 'USDC')?.address).toBe('0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359');
+    expect(getToken(137, 'USDT')?.address).toBe('0xc2132D05D31c914a87C6611C10748AEb04B58e8F');
   });
 
   it('exposes a default slippage tolerance', () => {

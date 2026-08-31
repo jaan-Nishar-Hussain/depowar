@@ -94,8 +94,8 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
     setStatus('quoting');
     setError(null);
     try {
-      if (![11155111, 84532].includes(chain!.id)) {
-        throw new Error('Connect to Ethereum Sepolia or Base Sepolia to send this deposit.');
+      if (![1, 8453, 137, 11155111, 84532].includes(chain!.id)) {
+        throw new Error('Connect to Ethereum, Base, or Polygon Mainnet to send this deposit.');
       }
       const sourceToken = config.fromTokenByChain?.[chain!.id] ?? config.fromToken ?? 'native';
       const srcDecimals = await resolveTokenDecimals(sourceToken);
@@ -204,9 +204,9 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
             />
           </label>
 
-          {!([11155111, 84532].includes(chain!.id)) && (
+          {(![1, 8453, 137, 11155111, 84532].includes(chain!.id)) && (
             <div className="pm-status pm-status--error">
-              Connect to Ethereum Sepolia or Base Sepolia to send this deposit.
+              Connect to Ethereum, Base, or Polygon Mainnet to send this deposit.
             </div>
           )}
 
@@ -214,7 +214,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
             type="button"
             className="pm-btn pm-btn--primary"
             onClick={startDeposit}
-            disabled={status === 'quoting' || !amount || ![11155111, 84532].includes(chain!.id)}
+            disabled={status === 'quoting' || !amount || ![1, 8453, 137, 11155111, 84532].includes(chain!.id)}
           >
             {status === 'quoting' ? 'Quoting…' : 'Deposit'}
           </button>

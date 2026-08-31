@@ -57,6 +57,30 @@ export function listChains(): ChainInfo[] {
       nativeCurrency: { name: 'POL', symbol: 'POL', decimals: 18 },
       testnet: true,
     },
+    {
+      id: 1,
+      name: 'Ethereum Mainnet',
+      rpcUrl: env.ETHEREUM_MAINNET_RPC,
+      explorerUrl: 'https://etherscan.io',
+      nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+      testnet: false,
+    },
+    {
+      id: 8453,
+      name: 'Base',
+      rpcUrl: env.BASE_MAINNET_RPC,
+      explorerUrl: 'https://basescan.org',
+      nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+      testnet: false,
+    },
+    {
+      id: 137,
+      name: 'Polygon PoS',
+      rpcUrl: env.POLYGON_MAINNET_RPC,
+      explorerUrl: 'https://polygonscan.com',
+      nativeCurrency: { name: 'POL', symbol: 'POL', decimals: 18 },
+      testnet: false,
+    },
   ];
 }
 

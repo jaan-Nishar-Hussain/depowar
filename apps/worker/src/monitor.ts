@@ -1,7 +1,7 @@
 import { Job } from 'bullmq';
 import { createPublicClient, createWalletClient, http, isAddress, parseEventLogs, type Address, type Hex, type Log } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { getChain, getToken, MIN_CONFIRMATIONS, QUOTE_TTL_SECONDS } from '@paymesh/config';
+import { cctpDomain, cctpMessageTransmitter, cctpTokenMessenger, getChain, getToken, MIN_CONFIRMATIONS, QUOTE_TTL_SECONDS } from '@paymesh/config';
 import { generateId } from '@paymesh/db';
 import { readArtifact } from '@paymesh/contracts';
 import {
@@ -32,10 +32,7 @@ const CCTP_MESSAGE_TRANSMITTER_V2_ABI = [{
 }] as const;
 
 function cctpDomainForChain(chainId: number): number {
-  if (chainId === 11155111) return 0;
-  if (chainId === 84532) return 6;
-  if (chainId === 80002) return 7;
-  throw new Error(`No CCTP domain configured for chain ${chainId}`);
+  return cctpDomain(chainId);
 }
 
 interface MonitorJobData {
@@ -195,9 +192,8 @@ async function settleCctp(
 
   const sourceDomain = cctpDomainForChain(hop.fromChain ?? 0);
   const destinationChain = hop.toChain ?? quote.depositIntent.toChainId;
-  if (destinationChain !== 80002) throw new Error('CCTP settlement is restricted to Polygon Amoy');
-  const transmitter = ctx.env.CCTP_POLYGON_AMOY_MESSAGE_TRANSMITTER_ADDRESS as Address;
-  if (!transmitter) throw new Error('CCTP_POLYGON_AMOY_MESSAGE_TRANSMITTER_ADDRESS is not configured');
+  const transmitter = cctpMessageTransmitter(destinationChain) as Address;
+  if (!transmitter) throw new Error(`CCTP message transmitter is not configured for chain ${destinationChain}`);
 
   // Perform one non-blocking check. A pending/404 response is retried by
   // BullMQ instead of occupying a worker slot during Circle finalization.
@@ -440,19 +436,26 @@ export async function processFallback(
       timeoutMs: ctx.env.ROUTE_PROVIDER_TIMEOUT_MS,
     }));
   }
+  const mainnetSwap = quote.fromChainId === 1
+    ? { router: ctx.env.PAYMESH_ETHEREUM_MAINNET_UNISWAP_V3_ROUTER_ADDRESS, quoter: ctx.env.PAYMESH_ETHEREUM_MAINNET_UNISWAP_V3_QUOTER_ADDRESS }
+    : quote.fromChainId === 8453
+      ? { router: ctx.env.PAYMESH_BASE_MAINNET_UNISWAP_V3_ROUTER_ADDRESS, quoter: ctx.env.PAYMESH_BASE_MAINNET_UNISWAP_V3_QUOTER_ADDRESS }
+      : quote.fromChainId === 137
+        ? { router: ctx.env.PAYMESH_POLYGON_MAINNET_UNISWAP_V3_ROUTER_ADDRESS, quoter: ctx.env.PAYMESH_POLYGON_MAINNET_UNISWAP_V3_QUOTER_ADDRESS }
+        : { router: '', quoter: '' };
   const routerConfigured = quote.fromChainId === 11155111
     ? !!ctx.env.PAYMESH_SEPOLIA_DEX_ROUTER_ADDRESS ||
       (!!ctx.env.PAYMESH_SEPOLIA_UNISWAP_V3_ROUTER_ADDRESS && !!ctx.env.PAYMESH_SEPOLIA_UNISWAP_V3_QUOTER_ADDRESS)
     : quote.fromChainId === 84532
       ? !!ctx.env.PAYMESH_BASE_SEPOLIA_DEX_ROUTER_ADDRESS ||
         (!!ctx.env.PAYMESH_BASE_SEPOLIA_UNISWAP_V3_ROUTER_ADDRESS && !!ctx.env.PAYMESH_BASE_SEPOLIA_UNISWAP_V3_QUOTER_ADDRESS)
-      : false;
+      : !!mainnetSwap.router && !!mainnetSwap.quoter;
   const cctpConfigured = ctx.env.CCTP_ENABLED &&
     !!(quote.fromChainId === 11155111
       ? ctx.env.CCTP_SEPOLIA_TOKEN_MESSENGER_ADDRESS
       : quote.fromChainId === 84532
         ? ctx.env.CCTP_BASE_SEPOLIA_TOKEN_MESSENGER_ADDRESS
-        : '') &&
+      : cctpTokenMessenger(quote.fromChainId)) &&
     !!getToken(quote.fromChainId, 'USDC')?.address &&
     !!getToken(deposit.toChainId, 'USDC')?.address;
   if ((!sourceContracts.dex && !sourceContracts.bridge && !routerConfigured && !cctpConfigured) && routeProviders.length === 0) {
@@ -480,21 +483,21 @@ export async function processFallback(
       ? ctx.env.PAYMESH_SEPOLIA_UNISWAP_V3_ROUTER_ADDRESS
       : quote.fromChainId === 84532
         ? ctx.env.PAYMESH_BASE_SEPOLIA_UNISWAP_V3_ROUTER_ADDRESS
-        : '') as Address | undefined,
+        : mainnetSwap.router) as Address | undefined,
     uniswapV3QuoterAddress: (quote.fromChainId === 11155111
       ? ctx.env.PAYMESH_SEPOLIA_UNISWAP_V3_QUOTER_ADDRESS
       : quote.fromChainId === 84532
         ? ctx.env.PAYMESH_BASE_SEPOLIA_UNISWAP_V3_QUOTER_ADDRESS
-        : '') as Address | undefined,
+        : mainnetSwap.quoter) as Address | undefined,
     cctpTokenMessenger: (quote.fromChainId === 11155111
       ? ctx.env.CCTP_SEPOLIA_TOKEN_MESSENGER_ADDRESS
       : quote.fromChainId === 84532
         ? ctx.env.CCTP_BASE_SEPOLIA_TOKEN_MESSENGER_ADDRESS
-        : '') as Address | undefined,
+        : cctpTokenMessenger(quote.fromChainId)) as Address | undefined,
     sourceUsdc: getToken(quote.fromChainId, 'USDC')?.address as Address | undefined,
     destinationUsdc: getToken(deposit.toChainId, 'USDC')?.address as Address | undefined,
     cctpEnabled: ctx.env.CCTP_ENABLED,
-    cctpDestinationDomain: 7,
+    cctpDestinationDomain: cctpDomain(deposit.toChainId),
     cctpMaxFee: ctx.env.CCTP_MAX_FEE,
     cctpMinFinalityThreshold: ctx.env.CCTP_MIN_FINALITY_THRESHOLD,
     allowMock: ctx.env.PAYMESH_ALLOW_MOCK_ROUTES,

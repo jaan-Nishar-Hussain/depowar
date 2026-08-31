@@ -1,6 +1,7 @@
 export * from './env';
 export * from './chains';
 export * from './tokens';
+export * from './mainnet';
 
 /** Default slippage tolerance used when the client doesn't specify one. */
 export const DEFAULT_SLIPPAGE_BPS = 50; // 0.5%

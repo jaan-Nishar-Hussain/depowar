@@ -15,6 +15,10 @@ const EnvSchema = z.object({
   ALCHEMY_ARBITRUM_SEPOLIA_RPC: z.string().default(''),
   INFURA_SEPOLIA_RPC: z.string().default(''),
   POLYGON_AMOY_RPC: z.string().default(''),
+  // Mainnet RPCs. Keep these separate from testnet credentials.
+  ETHEREUM_MAINNET_RPC: z.string().default('https://ethereum-rpc.publicnode.com'),
+  BASE_MAINNET_RPC: z.string().default('https://mainnet.base.org'),
+  POLYGON_MAINNET_RPC: z.string().default('https://polygon-rpc.com'),
   API_KEY_SECRET: z.string().default('dev-secret'),
   WEBHOOK_HMAC_SECRET: z.string().default('dev-webhook-secret'),
   RATE_LIMIT_TTL_MS: z.coerce.number().default(60_000),
@@ -54,6 +58,15 @@ const EnvSchema = z.object({
   PAYMESH_SEPOLIA_WETH_ADDRESS: z.string().default(''),
   PAYMESH_BASE_SEPOLIA_WETH_ADDRESS: z.string().default(''),
   POLYGON_AMOY_USDC_ADDRESS: z.string().default(''),
+  ETHEREUM_MAINNET_PRIVATE_KEY: z.string().default(''),
+  BASE_MAINNET_PRIVATE_KEY: z.string().default(''),
+  POLYGON_MAINNET_PRIVATE_KEY: z.string().default(''),
+  PAYMESH_ETHEREUM_MAINNET_UNISWAP_V3_ROUTER_ADDRESS: z.string().default('0xE592427A0AEce92De3Edee1F18E0157C05861564'),
+  PAYMESH_ETHEREUM_MAINNET_UNISWAP_V3_QUOTER_ADDRESS: z.string().default('0x61fFE014bA17989E743c5F6cB21bF9697530B21e'),
+  PAYMESH_BASE_MAINNET_UNISWAP_V3_ROUTER_ADDRESS: z.string().default('0x2626664c2603336E57B271c5C0b26F421741e481'),
+  PAYMESH_BASE_MAINNET_UNISWAP_V3_QUOTER_ADDRESS: z.string().default('0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a'),
+  PAYMESH_POLYGON_MAINNET_UNISWAP_V3_ROUTER_ADDRESS: z.string().default('0xE592427A0AEce92De3Edee1F18E0157C05861564'),
+  PAYMESH_POLYGON_MAINNET_UNISWAP_V3_QUOTER_ADDRESS: z.string().default('0x61fFE014bA17989E743c5F6cB21bF9697530B21e'),
   CCTP_ENABLED: z.preprocess(
     (value) => typeof value === 'string' ? value.toLowerCase() === 'true' : value,
     z.boolean(),
@@ -61,6 +74,12 @@ const EnvSchema = z.object({
   CCTP_SEPOLIA_TOKEN_MESSENGER_ADDRESS: z.string().default(''),
   CCTP_BASE_SEPOLIA_TOKEN_MESSENGER_ADDRESS: z.string().default(''),
   CCTP_POLYGON_AMOY_MESSAGE_TRANSMITTER_ADDRESS: z.string().default(''),
+  CCTP_ETHEREUM_MAINNET_TOKEN_MESSENGER_ADDRESS: z.string().default('0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d'),
+  CCTP_BASE_MAINNET_TOKEN_MESSENGER_ADDRESS: z.string().default('0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d'),
+  CCTP_POLYGON_MAINNET_TOKEN_MESSENGER_ADDRESS: z.string().default('0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d'),
+  CCTP_ETHEREUM_MAINNET_MESSAGE_TRANSMITTER_ADDRESS: z.string().default('0x81D40F21F12A8F0E3252Bccb954D722d4c464B64'),
+  CCTP_BASE_MAINNET_MESSAGE_TRANSMITTER_ADDRESS: z.string().default('0x81D40F21F12A8F0E3252Bccb954D722d4c464B64'),
+  CCTP_POLYGON_MAINNET_MESSAGE_TRANSMITTER_ADDRESS: z.string().default('0x81D40F21F12A8F0E3252Bccb954D722d4c464B64'),
   CCTP_IRIS_API_URL: z.string().default('https://iris-api-sandbox.circle.com'),
   CCTP_MAX_FEE: z.coerce.bigint().default(0n),
   CCTP_MIN_FINALITY_THRESHOLD: z.coerce.number().default(2000),
@@ -93,11 +112,22 @@ let cached: AppEnv | undefined;
 export function loadEnv(overrides?: Partial<AppEnv>): AppEnv {
   const source = { ...process.env, ...(overrides ?? {}) };
   cached = EnvSchema.parse(source);
+  if (cached.APP_ENV === 'production') {
+    if (cached.PAYMESH_ALLOW_MOCK_ROUTES) {
+      throw new Error('PAYMESH_ALLOW_MOCK_ROUTES must be false in production');
+    }
+    if ([31337, 80002, 84532, 11155111].includes(cached.PAYMESH_DEST_CHAIN_ID)) {
+      throw new Error('Production settlement must target a mainnet chain');
+    }
+    if (cached.CCTP_ENABLED && cached.CCTP_IRIS_API_URL.includes('sandbox')) {
+      throw new Error('Production CCTP must use https://iris-api.circle.com');
+    }
+  }
   return cached;
 }
 
 export function getEnv(): AppEnv {
-  if (!cached) cached = EnvSchema.parse(process.env);
+  if (!cached) cached = loadEnv();
   return cached;
 }
 

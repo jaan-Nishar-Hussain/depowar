@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createPublicClient, http, type Address } from 'viem';
-import { AppEnv, getChain } from '@paymesh/config';
+import { AppEnv, cctpDomain, cctpTokenMessenger, getChain, getToken, mainnetUniswap } from '@paymesh/config';
 import {
   routeNotFound,
   createMockDexAdapter,
@@ -14,7 +14,6 @@ import {
   type Quote as EngineQuote,
   type QuoteRequest,
 } from '@paymesh/routing-engine';
-import { getToken } from '@paymesh/config';
 import { ENV } from '../common/tokens';
 import { viemChain } from '../common/chains';
 
@@ -50,11 +49,12 @@ export class DefaultRoutingProvider implements RoutingProvider {
     const chain = getChain(req.fromChain);
     const publicClient = createPublicClient({ chain: viemChain(req.fromChain), transport: http(chain.rpcUrl) });
 
+    const mainnetDex = mainnetUniswap(req.fromChain);
     const routerAddress = req.fromChain === 11155111
       ? this.env.PAYMESH_SEPOLIA_DEX_ROUTER_ADDRESS
       : req.fromChain === 84532
         ? this.env.PAYMESH_BASE_SEPOLIA_DEX_ROUTER_ADDRESS
-        : '';
+        : mainnetDex.router ?? '';
     const wrappedNative = req.fromChain === 11155111
       ? this.env.PAYMESH_SEPOLIA_WETH_ADDRESS
       : req.fromChain === 84532
@@ -65,12 +65,12 @@ export class DefaultRoutingProvider implements RoutingProvider {
       ? this.env.PAYMESH_SEPOLIA_UNISWAP_V3_ROUTER_ADDRESS
       : req.fromChain === 84532
         ? this.env.PAYMESH_BASE_SEPOLIA_UNISWAP_V3_ROUTER_ADDRESS
-        : '';
+      : mainnetDex.router ?? '';
     const v3QuoterAddress = req.fromChain === 11155111
       ? this.env.PAYMESH_SEPOLIA_UNISWAP_V3_QUOTER_ADDRESS
       : req.fromChain === 84532
         ? this.env.PAYMESH_BASE_SEPOLIA_UNISWAP_V3_QUOTER_ADDRESS
-        : '';
+      : mainnetDex.quoter ?? '';
     const swapAdapters = v3RouterAddress && v3QuoterAddress
       ? [createUniswapV3Adapter({
           publicClient,
@@ -89,11 +89,7 @@ export class DefaultRoutingProvider implements RoutingProvider {
           ? [createMockDexAdapter({ publicClient, dexAddress: source.dex as Address, chains: [req.fromChain] })]
           : [];
     const sourceUsdc = getToken(req.fromChain, 'USDC')?.address;
-    const cctpMessenger = req.fromChain === 11155111
-      ? this.env.CCTP_SEPOLIA_TOKEN_MESSENGER_ADDRESS
-      : req.fromChain === 84532
-        ? this.env.CCTP_BASE_SEPOLIA_TOKEN_MESSENGER_ADDRESS
-        : '';
+    const cctpMessenger = cctpTokenMessenger(req.fromChain);
     const destinationUsdc = getToken(this.env.PAYMESH_DEST_CHAIN_ID, 'USDC')?.address;
     const bridgeAdapters = this.env.CCTP_ENABLED && cctpMessenger && sourceUsdc && destinationUsdc
       ? [createCctpAdapter({
@@ -103,7 +99,7 @@ export class DefaultRoutingProvider implements RoutingProvider {
           destinationUsdc: destinationUsdc as Address,
           sourceChainId: req.fromChain,
           destinationChainId: this.env.PAYMESH_DEST_CHAIN_ID,
-          destinationDomain: 7,
+          destinationDomain: cctpDomain(this.env.PAYMESH_DEST_CHAIN_ID),
           maxFee: this.env.CCTP_MAX_FEE,
           minFinalityThreshold: this.env.CCTP_MIN_FINALITY_THRESHOLD,
         })]
