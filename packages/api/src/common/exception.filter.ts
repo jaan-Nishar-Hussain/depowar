@@ -10,6 +10,7 @@ import { Response, Request } from 'express';
 import { ZodError } from 'zod';
 import { PayMeshError, ErrorCodes } from './errors';
 import { PayMeshRoutingError } from '@paymesh/routing-engine';
+import { stringifyBigInts } from './serialize';
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -72,9 +73,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       }),
     );
 
-    response.status(status).json({
+    response.status(status).json(stringifyBigInts({
       error: { code, message, userMessage, details },
       requestId: request.requestId,
-    });
+    }));
   }
 }

@@ -84,7 +84,9 @@ const EnvSchema = z.object({
   CCTP_MAX_FEE: z.coerce.bigint().default(0n),
   CCTP_MIN_FINALITY_THRESHOLD: z.coerce.number().default(2000),
   ROUTE_PROVIDER_URLS: z.string().default(''),
-  ROUTE_PROVIDER_TIMEOUT_MS: z.coerce.number().default(5_000),
+  // Advanced cross-chain providers may need one request for route discovery
+  // and another for transaction preparation.
+  ROUTE_PROVIDER_TIMEOUT_MS: z.coerce.number().default(30_000),
   LIFI_ENABLED: z.preprocess(
     (value) => typeof value === 'string' ? value.toLowerCase() === 'true' : value,
     z.boolean(),
