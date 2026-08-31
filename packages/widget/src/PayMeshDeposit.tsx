@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useRef } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { useAccount, useConnect, usePublicClient, useWalletClient } from 'wagmi';
 import { PayMeshClient, type QuoteResult } from '@paymesh/sdk';
 import type { PayMeshDepositApi, PayMeshDepositConfig, DepositStatus } from './types';
@@ -73,10 +73,19 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
   const [error, setError] = useState<string | null>(null);
   const [destDecimals, setDestDecimals] = useState(6);
   const [swipeOffset, setSwipeOffset] = useState(0);
+  const [processingProgress, setProcessingProgress] = useState(8);
   const swipeRef = useRef<HTMLButtonElement>(null);
 
   const connected = isConnected && !!address && !!chain;
   const isSigning = status === 'signing';
+
+  useEffect(() => {
+    if (status !== 'inFlight') return undefined;
+    const timer = window.setInterval(() => {
+      setProcessingProgress((current) => Math.min(92, current + Math.max(1, Math.round((92 - current) / 8))));
+    }, 900);
+    return () => window.clearInterval(timer);
+  }, [status]);
 
   const resolveTokenDecimals = useCallback(
     async (token: string | undefined): Promise<number> => {
@@ -172,7 +181,9 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
       }
 
       setStatus('inFlight');
+      setProcessingProgress(94);
       const final = await sdk.pollUntilSettled(depositId);
+      if (final.status === 'SETTLED') setProcessingProgress(100);
       setStatus(final.status === 'SETTLED' ? 'settled' : 'failed');
       if (final.status !== 'SETTLED') setError('Deposit failed to settle.');
     } catch (e) {
@@ -209,6 +220,15 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
     event.currentTarget.addEventListener('pointercancel', end);
   }, [finishSwipe, isSigning, quote, status, swipeOffset]);
 
+  const resetDeposit = useCallback(() => {
+    setAmount('');
+    setQuote(null);
+    setDepositId(null);
+    setProcessingProgress(8);
+    setStatus('idle');
+    setError(null);
+  }, []);
+
   return (
     <div className="pm-deposit" data-testid="paymesh-deposit">
       <div className="pm-deposit__header">
@@ -233,6 +253,30 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
         </div>
       ) : (
         <div className="pm-deposit__body">
+          {status === 'inFlight' && (
+            <div className="pm-result pm-result--processing" role="status" aria-live="polite">
+              <div className="pm-result__amount">${amount || '0.00'}</div>
+              <div className="pm-result__asset">{amount || '0'} USDC <span>↕</span></div>
+              <div className="pm-result__balance">Processing transaction</div>
+              <div className="pm-progress" style={{ '--pm-progress': `${processingProgress * 3.6}deg` } as React.CSSProperties}>
+                <span>{processingProgress}%</span>
+              </div>
+              <div className="pm-result__message">Processing transaction…</div>
+            </div>
+          )}
+
+          {status === 'settled' && (
+            <div className="pm-result pm-result--complete" role="status" aria-live="polite">
+              <div className="pm-confetti" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
+              <div className="pm-success-mark">✓</div>
+              <h2>Deposit Complete!<span className="pm-visually-hidden">Deposit Completed</span></h2>
+              <div className="pm-result__received">{formatBaseUnits(quote?.estimatedOutput ?? '0', destDecimals)} USDT</div>
+              <button type="button" className="pm-btn pm-btn--primary pm-done" onClick={resetDeposit}>Done</button>
+            </div>
+          )}
+
+          {status !== 'inFlight' && status !== 'settled' && (
+          <>
           <label className="pm-field">
             <span className="pm-field__label">Amount</span>
             <input
@@ -313,9 +357,9 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
             </div>
           )}
 
-          {status === 'inFlight' && <div className="pm-status">Watching your deposit on-chain…</div>}
-          {status === 'settled' && <div className="pm-status pm-status--ok">Deposit Completed</div>}
           {status === 'failed' && error && <div className="pm-status pm-status--error">{error}</div>}
+          </>
+          )}
         </div>
       )}
     </div>
