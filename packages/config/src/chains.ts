@@ -81,6 +81,11 @@ export function listChains(): ChainInfo[] {
       nativeCurrency: { name: 'POL', symbol: 'POL', decimals: 18 },
       testnet: false,
     },
+    { id: 43114, name: 'Avalanche', rpcUrl: env.AVALANCHE_MAINNET_RPC, explorerUrl: 'https://snowtrace.io', nativeCurrency: { name: 'Avalanche', symbol: 'AVAX', decimals: 18 }, testnet: false },
+    { id: 42161, name: 'Arbitrum One', rpcUrl: env.ARBITRUM_MAINNET_RPC, explorerUrl: 'https://arbiscan.io', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, testnet: false },
+    { id: 10, name: 'OP Mainnet', rpcUrl: env.OPTIMISM_MAINNET_RPC, explorerUrl: 'https://optimistic.etherscan.io', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, testnet: false },
+    { id: 59144, name: 'Linea Mainnet', rpcUrl: env.LINEA_MAINNET_RPC, explorerUrl: 'https://lineascan.build', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, testnet: false },
+    { id: 143, name: 'Monad', rpcUrl: env.MONAD_MAINNET_RPC, explorerUrl: 'https://monadscan.com', nativeCurrency: { name: 'Monad', symbol: 'MON', decimals: 18 }, testnet: false },
   ];
 }
 

@@ -78,22 +78,22 @@ describe('PayMeshDeposit', () => {
   });
 
   it('quotes, signs, and reports a deposit to settlement', async () => {
-    accountState = { address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266', isConnected: true, chain: { id: 11155111, name: 'Sepolia' } };
+    accountState = { address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266', isConnected: true, chain: { id: 1, name: 'Ethereum' } };
     render(<PayMeshDeposit config={config} />);
 
     fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '0.01' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Deposit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Swipe to get quote' }));
 
     await waitFor(() => expect(mocks.createDepositIntent).toHaveBeenCalledTimes(1));
     expect(mocks.getQuote).toHaveBeenCalledWith(
       expect.objectContaining({
-        fromChain: 11155111,
+        fromChain: 1,
         fromAmount: '10000000000000000', // 0.01 ETH -> wei
         fromToken: 'native',
       }),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Swipe to confirm deposit' }));
 
     await waitFor(() => expect(mocks.signAndSend).toHaveBeenCalledTimes(1));
     expect(mocks.reportTransaction).toHaveBeenCalledWith('qt_1', 0, '0xhash');
@@ -101,18 +101,18 @@ describe('PayMeshDeposit', () => {
   });
 
   it('surfaces API errors as user-facing messages', async () => {
-    accountState = { address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266', isConnected: true, chain: { id: 11155111, name: 'Sepolia' } };
+    accountState = { address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266', isConnected: true, chain: { id: 1, name: 'Ethereum' } };
     mocks.getQuote.mockRejectedValue(new Error('No route is available for that combination of chain and asset.'));
 
     render(<PayMeshDeposit config={config} />);
     fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '0.01' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Deposit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Swipe to get quote' }));
 
     await waitFor(() => expect(screen.getByText('No route is available for that combination of chain and asset.')).toBeInTheDocument());
   });
 
   it('signs every hop of a multi-step route before settling', async () => {
-    accountState = { address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266', isConnected: true, chain: { id: 11155111, name: 'Sepolia' } };
+    accountState = { address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266', isConnected: true, chain: { id: 1, name: 'Ethereum' } };
     mocks.getQuote.mockResolvedValue({
       quoteId: 'qt_2',
       route: [{ type: 'swap' }, { type: 'transfer' }],
@@ -127,10 +127,10 @@ describe('PayMeshDeposit', () => {
 
     render(<PayMeshDeposit config={config} />);
     fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '0.01' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Deposit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Swipe to get quote' }));
     await waitFor(() => expect(mocks.getQuote).toHaveBeenCalledTimes(1));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Swipe to confirm deposit' }));
 
     await waitFor(() => {
       expect(mocks.signAndSend).toHaveBeenCalledTimes(2);

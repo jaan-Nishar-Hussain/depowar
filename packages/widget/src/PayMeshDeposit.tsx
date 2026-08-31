@@ -1,6 +1,7 @@
-import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
-import { useAccount, useConnect, usePublicClient, useWalletClient } from 'wagmi';
+import { useMemo, useState, useCallback, useRef, useEffect, type ComponentType, type CSSProperties } from 'react';
+import { useAccount, useConnect, usePublicClient, useWalletClient, useSwitchChain } from 'wagmi';
 import { PayMeshClient, type QuoteResult } from '@paymesh/sdk';
+import { ArbitrumCircleColorful, AvaxCircleColorful, BaseCircleColorful, EthereumCircleColorful, OptimismCircleColorful, PolygonCircleColorful, UsdcCircleColorful, UsdtCircleColorful } from '@ant-design/web3-icons';
 import type { PayMeshDepositApi, PayMeshDepositConfig, DepositStatus } from './types';
 
 function messageOf(error: unknown): string {
@@ -30,7 +31,33 @@ function formatBaseUnits(value: string, decimals: number): string {
 }
 
 function chainLabel(chainId: number | undefined): string {
-  return ({ 1: 'Ethereum', 8453: 'Base', 137: 'Polygon', 11155111: 'Sepolia', 84532: 'Base Sepolia' } as Record<number, string>)[chainId ?? 0] ?? 'Network';
+  return ({ 1: 'Ethereum', 8453: 'Base', 137: 'Polygon', 43114: 'Avalanche', 42161: 'Arbitrum', 10: 'Optimism', 59144: 'Linea', 143: 'Monad' } as Record<number, string>)[chainId ?? 0] ?? 'Network';
+}
+
+function chainIcon(chainId: number): string {
+  return ({ 1: 'Ξ', 8453: 'B', 137: 'P', 11155111: 'Ξ', 84532: 'B', 80002: 'P', 43114: 'A', 42161: 'ARB', 10: 'OP', 59144: 'L', 143: 'M' } as Record<number, string>)[chainId] ?? '◆';
+}
+
+function NetworkIcon({ chainId, size = 32 }: { chainId: number; size?: number }) {
+  const icons: Record<number, ComponentType<{ style?: CSSProperties; 'aria-hidden'?: boolean | 'true' | 'false' }>> = {
+    1: EthereumCircleColorful, 8453: BaseCircleColorful,
+    137: PolygonCircleColorful, 43114: AvaxCircleColorful, 42161: ArbitrumCircleColorful,
+    10: OptimismCircleColorful,
+  };
+  const Icon = icons[chainId];
+  return Icon ? <Icon style={{ fontSize: size }} aria-hidden /> : <span aria-hidden="true">{chainIcon(chainId)}</span>;
+}
+
+function TokenIcon({ symbol, size = 40 }: { symbol: string; size?: number }) {
+  const Icon = symbol === 'USDT' ? UsdtCircleColorful : UsdcCircleColorful;
+  return <Icon style={{ fontSize: size }} aria-hidden />;
+}
+
+function tokenLabel(address: string | undefined): string {
+  if (!address || address === 'native') return 'ETH';
+  const normalized = address.toLowerCase();
+  if (normalized === '0xfde4c96c8593536e31f229ea8f37b2ada2699bb2' || normalized === '0xc2132d05d31c914a87c6611c10748aeb04b58e8f') return 'USDT';
+  return 'USDC';
 }
 
 async function waitForStatus(
@@ -58,6 +85,7 @@ async function waitForStatus(
 export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
   const { address, isConnected, chain } = useAccount();
   const { connect, connectors } = useConnect();
+  const { switchChain } = useSwitchChain();
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
 
@@ -74,10 +102,21 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
   const [destDecimals, setDestDecimals] = useState(6);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [processingProgress, setProcessingProgress] = useState(8);
+  const [selectorOpen, setSelectorOpen] = useState(false);
   const swipeRef = useRef<HTMLButtonElement>(null);
 
   const connected = isConnected && !!address && !!chain;
   const isSigning = status === 'signing';
+  const supportedChains = [1, 8453, 137, 43114, 42161, 10, 59144, 143];
+  const baseSourceToken = config.fromTokenByChain?.[chain?.id ?? 0] ?? config.fromToken ?? 'native';
+  const tokenOptions = config.supportedTokensByChain?.[chain?.id ?? 0]?.filter((token) => token.address) ?? [{ symbol: tokenLabel(baseSourceToken), address: baseSourceToken }];
+  const [selectedToken, setSelectedToken] = useState<string>();
+  const sourceToken = selectedToken ?? tokenOptions[0]?.address ?? baseSourceToken;
+  const sourceSymbol = tokenOptions.find((token) => token.address.toLowerCase() === sourceToken.toLowerCase())?.symbol ?? tokenLabel(sourceToken);
+
+  useEffect(() => {
+    setSelectedToken(undefined);
+  }, [chain?.id]);
 
   useEffect(() => {
     if (status !== 'inFlight') return undefined;
@@ -109,10 +148,9 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
     setStatus('quoting');
     setError(null);
     try {
-      if (![1, 8453, 137, 11155111, 84532].includes(chain!.id)) {
-        throw new Error('Connect to Ethereum, Base, or Polygon Mainnet to send this deposit.');
+      if (!supportedChains.includes(chain!.id)) {
+        throw new Error('Connect to a supported mainnet network to send this deposit.');
       }
-      const sourceToken = config.fromTokenByChain?.[chain!.id] ?? config.fromToken ?? 'native';
       const srcDecimals = await resolveTokenDecimals(sourceToken);
       setDestDecimals(config.toTokenDecimals ?? 6);
       const fromAmount = toBaseUnits(amount, srcDecimals);
@@ -194,13 +232,18 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
 
   const finishSwipe = useCallback(() => {
     setSwipeOffset(0);
-    if (!isSigning && quote && status === 'ready') void confirm();
-  }, [confirm, isSigning, quote, status]);
+    if (isSigning || status === 'quoting') return;
+    if (quote && status === 'ready') {
+      void confirm();
+    } else if (!quote && amount) {
+      void startDeposit();
+    }
+  }, [amount, confirm, isSigning, quote, startDeposit, status]);
 
   const handleSwipe = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
-    if (isSigning || !quote || status !== 'ready') return;
+    if (isSigning || status === 'quoting' || (quote && status !== 'ready') || (!quote && !amount)) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    const max = Math.max(0, rect.width - 62);
+    const max = Math.max(0, rect.width - 64);
     const startX = event.clientX;
     const startOffset = swipeOffset;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -218,7 +261,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
     event.currentTarget.addEventListener('pointermove', move);
     event.currentTarget.addEventListener('pointerup', end);
     event.currentTarget.addEventListener('pointercancel', end);
-  }, [finishSwipe, isSigning, quote, status, swipeOffset]);
+  }, [amount, finishSwipe, isSigning, quote, status, swipeOffset]);
 
   const resetDeposit = useCallback(() => {
     setAmount('');
@@ -290,11 +333,44 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
             />
           </label>
 
-          <div className="pm-token-card" aria-label="Payment asset">
-            <span className="pm-token-card__icon">$</span>
-            <span className="pm-token-card__name">USDC<small>{chainLabel(chain.id)}</small></span>
+          <button type="button" className="pm-token-card" aria-label="Select chain and token" onClick={() => setSelectorOpen(true)}>
+            <span className="pm-token-card__icon"><TokenIcon symbol={sourceSymbol} size={38} /></span>
+            <span className="pm-token-card__name">{sourceSymbol}<small>{chainLabel(chain.id)}</small></span>
             <span className="pm-token-card__chevron">⌄</span>
-          </div>
+          </button>
+
+          {selectorOpen && (
+            <div className="pm-selector-backdrop" role="presentation" onClick={() => setSelectorOpen(false)}>
+              <section className="pm-selector" role="dialog" aria-modal="true" aria-labelledby="pm-selector-title" onClick={(event) => event.stopPropagation()}>
+                <div className="pm-selector__header">
+                  <button type="button" className="pm-selector__back" aria-label="Close selector" onClick={() => setSelectorOpen(false)}>‹</button>
+                  <h2 id="pm-selector-title">Select Token</h2>
+                  <span className="pm-selector__mode">☾</span>
+                </div>
+                <div className="pm-selector__search"><span>⌕</span><input aria-label="Search chain or token" placeholder="Search chain or token" /></div>
+                <div className="pm-selector__columns">
+                  <div className="pm-selector__chains">
+                    <div className="pm-selector__section-title">Popular chains</div>
+                    {supportedChains.map((chainId) => (
+                      <button key={chainId} type="button" className={`pm-chain-option ${chain?.id === chainId ? 'pm-chain-option--active' : ''}`} onClick={() => { switchChain?.({ chainId }); setSelectorOpen(false); }}>
+                        <span className={`pm-chain-option__icon pm-chain-option__icon--${chainId}`}><NetworkIcon chainId={chainId} size={32} /></span>
+                        {chainLabel(chainId)}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="pm-selector__tokens">
+                    <div className="pm-selector__section-title">Your tokens</div>
+                    {tokenOptions.map((token) => (
+                      <button key={token.address} type="button" className={`pm-token-option ${token.address.toLowerCase() === sourceToken.toLowerCase() ? 'pm-token-option--active' : ''}`} onClick={() => { setSelectedToken(token.address); setSelectorOpen(false); }}>
+                        <span className={`pm-token-option__icon pm-token-option__icon--${token.symbol.toLowerCase()}`}><TokenIcon symbol={token.symbol} size={40} /></span>
+                        <span><strong>{token.symbol}</strong><small>{token.decimals ?? 6} decimals · {chainLabel(chain.id)}</small></span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            </div>
+          )}
 
           <div className="pm-range-wrap">
             <input
@@ -312,18 +388,32 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
 
           {(![1, 8453, 137, 11155111, 84532].includes(chain!.id)) && (
             <div className="pm-status pm-status--error">
-              Connect to Ethereum, Base, or Polygon Mainnet to send this deposit.
+              Connect to a supported mainnet network to send this deposit.
             </div>
           )}
 
-          <button
-            type="button"
-            className="pm-btn pm-btn--primary"
-            onClick={startDeposit}
-            disabled={status === 'quoting' || !amount || ![1, 8453, 137, 11155111, 84532].includes(chain!.id)}
-          >
-            {status === 'quoting' ? 'Quoting…' : 'Deposit'}
-          </button>
+          {!quote && (
+            <>
+              <button
+                ref={swipeRef}
+                type="button"
+                className={`pm-swipe ${status === 'quoting' ? 'pm-swipe--busy' : ''}`}
+                aria-label="Swipe to get quote"
+                onPointerDown={handleSwipe}
+                onClick={() => { if (!swipeOffset) finishSwipe(); }}
+                onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); finishSwipe(); } }}
+                disabled={status === 'quoting' || !amount || ![1, 8453, 137, 43114, 42161, 10, 59144, 143].includes(chain!.id)}
+              >
+                <span className="pm-swipe__fill" style={{ width: `calc(70px + ${swipeOffset}px)` }} aria-hidden="true" />
+                <span className="pm-swipe__thumb" style={{ transform: `translateX(${swipeOffset}px)` }}>
+                  <TokenIcon symbol={sourceSymbol} size={56} />
+                </span>
+                <span className="pm-swipe__label">{status === 'quoting' ? 'Getting quote…' : 'Swipe to continue'}</span>
+                <span className="pm-swipe__destination"><NetworkIcon chainId={config.toChain} size={40} /></span>
+              </button>
+              <div className="pm-swipe__route">{sourceSymbol} on {chainLabel(chain.id)} → {tokenLabel(config.toToken)} on Polygon</div>
+            </>
+          )}
 
           {quote && status === 'ready' && (
             <div className="pm-quote">
@@ -343,17 +433,20 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
                 ref={swipeRef}
                 type="button"
                 className={`pm-swipe ${isSigning ? 'pm-swipe--busy' : ''}`}
-                aria-label="Confirm"
+                aria-label="Swipe to confirm deposit"
                 onPointerDown={handleSwipe}
                 onClick={() => { if (!swipeOffset) finishSwipe(); }}
                 onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); finishSwipe(); } }}
                 disabled={isSigning}
               >
-                <span className="pm-swipe__thumb" style={{ transform: `translateX(${swipeOffset}px)` }}>→</span>
+                <span className="pm-swipe__fill" style={{ width: `calc(70px + ${swipeOffset}px)` }} aria-hidden="true" />
+                <span className="pm-swipe__thumb" style={{ transform: `translateX(${swipeOffset}px)` }}>
+                  <TokenIcon symbol={sourceSymbol} size={56} />
+                </span>
                 <span className="pm-swipe__label">{isSigning ? 'Confirming…' : 'Swipe to confirm'}</span>
-                <span className="pm-swipe__destination">◆</span>
+                <span className="pm-swipe__destination"><NetworkIcon chainId={config.toChain} size={40} /></span>
               </button>
-              <div className="pm-swipe__route">USDC on {chainLabel(chain.id)} → USDT on Polygon</div>
+              <div className="pm-swipe__route">{sourceSymbol} on {chainLabel(chain.id)} → {tokenLabel(config.toToken)} on Polygon</div>
             </div>
           )}
 

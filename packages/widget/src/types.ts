@@ -16,6 +16,8 @@ export interface PayMeshDepositConfig {
   fromToken?: string;
   /** Optional per-source-chain token map, useful when testing Sepolia and Base Sepolia together. */
   fromTokenByChain?: Record<number, string>;
+  /** Explicit source token choices per chain. Empty/missing addresses are not displayed. */
+  supportedTokensByChain?: Record<number, Array<{ symbol: string; address: string; decimals?: number }>>;
   /** Skip the "connect wallet" gate when an account is already available. */
   defaultSlippageBps?: number;
 }

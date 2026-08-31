@@ -18,12 +18,21 @@ const USDC_ADDRESSES: Record<ChainId, string> = {
   1: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
   8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
   137: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
+  43114: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E',
+  42161: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+  10: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+  59144: '0x176211869cA2b568f2A7D4EE941E073a821EE1ff',
+  143: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
 };
 
 const USDT_ADDRESSES: Record<ChainId, string> = {
   1: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
   8453: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2',
   137: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
+  43114: '0x9702230A8Ea53601f5cD2dc00fDBC13d4dF4A8c7',
+  42161: '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9',
+  10: '0x94b008aA00579c1307B0EF2c499Ad98a8ce58e58',
+  59144: '0xa219439258ca9da29e9cc4ce5596924745e12b93',
 };
 
 /**
@@ -69,6 +78,11 @@ export const TOKENS: Record<ChainId, TokenInfo[]> = {
     { symbol: 'USDT', name: 'Tether USD', address: USDT_ADDRESSES[137], decimals: 6 },
     { symbol: 'WETH', name: 'Wrapped Ether', address: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', decimals: 18 },
   ],
+  43114: [{ symbol: 'AVAX', name: 'Avalanche', address: null, decimals: 18, native: true }, { symbol: 'USDC', name: 'USD Coin', address: USDC_ADDRESSES[43114], decimals: 6 }, { symbol: 'USDT', name: 'Tether USD', address: USDT_ADDRESSES[43114], decimals: 6 }],
+  42161: [{ symbol: 'ETH', name: 'Ether', address: null, decimals: 18, native: true }, { symbol: 'USDC', name: 'USD Coin', address: USDC_ADDRESSES[42161], decimals: 6 }, { symbol: 'USDT', name: 'Tether USD', address: USDT_ADDRESSES[42161], decimals: 6 }],
+  10: [{ symbol: 'ETH', name: 'Ether', address: null, decimals: 18, native: true }, { symbol: 'USDC', name: 'USD Coin', address: USDC_ADDRESSES[10], decimals: 6 }, { symbol: 'USDT', name: 'Tether USD', address: USDT_ADDRESSES[10], decimals: 6 }],
+  59144: [{ symbol: 'ETH', name: 'Ether', address: null, decimals: 18, native: true }, { symbol: 'USDC', name: 'USD Coin', address: USDC_ADDRESSES[59144], decimals: 6 }, { symbol: 'USDT', name: 'Tether USD', address: USDT_ADDRESSES[59144], decimals: 6 }],
+  143: [{ symbol: 'MON', name: 'Monad', address: null, decimals: 18, native: true }, { symbol: 'USDC', name: 'USD Coin', address: USDC_ADDRESSES[143], decimals: 6 }],
 };
 
 export function getTokens(chainId: ChainId): TokenInfo[] {
