@@ -40,6 +40,59 @@
   border-radius: 8px;
   font-size: 14px;
 }
+.pm-token-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 8px 14px;
+  border: 1px solid #edf0f4;
+  border-radius: 30px;
+  background: #fff;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, .05);
+}
+.pm-token-card__icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #3f83f8;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+}
+.pm-token-card__name {
+  display: flex;
+  flex-direction: column;
+  font-weight: 700;
+  font-size: 16px;
+}
+.pm-token-card__name small {
+  color: #9aa3b2;
+  font-size: 12px;
+  font-weight: 500;
+}
+.pm-token-card__chevron {
+  margin-left: auto;
+  color: #7e8796;
+  font-size: 22px;
+}
+.pm-range-wrap {
+  padding: 8px 3px 0;
+}
+.pm-range {
+  width: 100%;
+  accent-color: #16bf96;
+  cursor: pointer;
+}
+.pm-range-labels {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 2px 0;
+  color: #b0b6c0;
+  font-size: 11px;
+}
 .pm-btn {
   padding: 8px 12px;
   border-radius: 8px;
@@ -60,6 +113,52 @@
 }
 .pm-btn--ghost {
   background: transparent;
+}
+.pm-swipe {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 58px;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #edf0f4;
+  border-radius: 30px;
+  background: #f9fbff;
+  color: #9da5b2;
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+}
+.pm-swipe:active { cursor: grabbing; }
+.pm-swipe:focus-visible { outline: 3px solid rgba(22, 191, 150, .3); outline-offset: 2px; }
+.pm-swipe:disabled { cursor: wait; opacity: .75; }
+.pm-swipe__thumb {
+  position: absolute;
+  left: 6px;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: #b7cef7;
+  color: #fff;
+  font-size: 25px;
+  font-weight: 700;
+  transition: transform .15s ease;
+}
+.pm-swipe__label { font-size: 16px; font-weight: 700; }
+.pm-swipe__destination {
+  position: absolute;
+  right: 13px;
+  color: #d6e2fa;
+  font-size: 23px;
+}
+.pm-swipe__route {
+  margin-top: -1px;
+  color: #8f98a8;
+  font-size: 12px;
+  text-align: center;
 }
 .pm-quote {
   border-top: 1px dashed #d1d5db;

@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useRef } from 'react';
 import { useAccount, useConnect, usePublicClient, useWalletClient } from 'wagmi';
 import { PayMeshClient, type QuoteResult } from '@paymesh/sdk';
 import type { PayMeshDepositApi, PayMeshDepositConfig, DepositStatus } from './types';
@@ -27,6 +27,10 @@ function formatBaseUnits(value: string, decimals: number): string {
   const whole = raw / factor;
   const frac = (raw % factor).toString().padStart(decimals, '0').replace(/0+$/, '');
   return frac ? `${whole}.${frac}` : whole.toString();
+}
+
+function chainLabel(chainId: number | undefined): string {
+  return ({ 1: 'Ethereum', 8453: 'Base', 137: 'Polygon', 11155111: 'Sepolia', 84532: 'Base Sepolia' } as Record<number, string>)[chainId ?? 0] ?? 'Network';
 }
 
 async function waitForStatus(
@@ -68,6 +72,8 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
   const [status, setStatus] = useState<DepositStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [destDecimals, setDestDecimals] = useState(6);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const swipeRef = useRef<HTMLButtonElement>(null);
 
   const connected = isConnected && !!address && !!chain;
   const isSigning = status === 'signing';
@@ -124,6 +130,14 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
     }
   }, [connected, sdk, config, chain, address, amount, resolveTokenDecimals]);
 
+  const resetQuote = useCallback((nextAmount: string) => {
+    setAmount(nextAmount);
+    setQuote(null);
+    setDepositId(null);
+    if (status !== 'signing' && status !== 'inFlight') setStatus('idle');
+    setSwipeOffset(0);
+  }, [status]);
+
   const confirm = useCallback(async () => {
     if (!walletClient || !quote || !depositId) return;
     setStatus('signing');
@@ -167,6 +181,34 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
     }
   }, [walletClient, quote, depositId, sdk]);
 
+  const finishSwipe = useCallback(() => {
+    setSwipeOffset(0);
+    if (!isSigning && quote && status === 'ready') void confirm();
+  }, [confirm, isSigning, quote, status]);
+
+  const handleSwipe = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    if (isSigning || !quote || status !== 'ready') return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const max = Math.max(0, rect.width - 62);
+    const startX = event.clientX;
+    const startOffset = swipeOffset;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const move = (moveEvent: PointerEvent) => {
+      const next = Math.max(0, Math.min(max, startOffset + moveEvent.clientX - startX));
+      setSwipeOffset(next);
+      if (next >= max * 0.9) finishSwipe();
+    };
+    const end = () => {
+      setSwipeOffset((current) => current >= max * 0.9 ? current : 0);
+      event.currentTarget.removeEventListener('pointermove', move);
+      event.currentTarget.removeEventListener('pointerup', end);
+      event.currentTarget.removeEventListener('pointercancel', end);
+    };
+    event.currentTarget.addEventListener('pointermove', move);
+    event.currentTarget.addEventListener('pointerup', end);
+    event.currentTarget.addEventListener('pointercancel', end);
+  }, [finishSwipe, isSigning, quote, status, swipeOffset]);
+
   return (
     <div className="pm-deposit" data-testid="paymesh-deposit">
       <div className="pm-deposit__header">
@@ -200,9 +242,29 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
               value={amount}
               placeholder="0.0"
               aria-label="Amount"
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => resetQuote(e.target.value)}
             />
           </label>
+
+          <div className="pm-token-card" aria-label="Payment asset">
+            <span className="pm-token-card__icon">$</span>
+            <span className="pm-token-card__name">USDC<small>{chainLabel(chain.id)}</small></span>
+            <span className="pm-token-card__chevron">⌄</span>
+          </div>
+
+          <div className="pm-range-wrap">
+            <input
+              className="pm-range"
+              type="range"
+              min="0"
+              max="150"
+              step="0.01"
+              value={Math.min(150, Number(amount) || 0)}
+              aria-label="Amount slider"
+              onChange={(e) => resetQuote(e.target.value)}
+            />
+            <div className="pm-range-labels"><span>$0</span><span>$50</span><span>$100</span><span>$150</span></div>
+          </div>
 
           {(![1, 8453, 137, 11155111, 84532].includes(chain!.id)) && (
             <div className="pm-status pm-status--error">
@@ -234,13 +296,20 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
                 <strong>{quote.route.map((h) => h.type).join(' → ')}</strong>
               </div>
               <button
+                ref={swipeRef}
                 type="button"
-                className="pm-btn pm-btn--primary"
-                onClick={confirm}
+                className={`pm-swipe ${isSigning ? 'pm-swipe--busy' : ''}`}
+                aria-label="Confirm"
+                onPointerDown={handleSwipe}
+                onClick={() => { if (!swipeOffset) finishSwipe(); }}
+                onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); finishSwipe(); } }}
                 disabled={isSigning}
               >
-                {isSigning ? 'Confirming…' : 'Confirm'}
+                <span className="pm-swipe__thumb" style={{ transform: `translateX(${swipeOffset}px)` }}>→</span>
+                <span className="pm-swipe__label">{isSigning ? 'Confirming…' : 'Swipe to confirm'}</span>
+                <span className="pm-swipe__destination">◆</span>
               </button>
+              <div className="pm-swipe__route">USDC on {chainLabel(chain.id)} → USDT on Polygon</div>
             </div>
           )}
 
