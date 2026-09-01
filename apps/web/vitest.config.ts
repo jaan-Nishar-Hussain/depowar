@@ -8,5 +8,10 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./test/setup.ts'],
+    server: {
+      deps: {
+        inline: ['@ant-design/web3-icons'],
+      },
+    },
   },
 });
