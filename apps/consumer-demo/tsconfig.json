@@ -1,0 +1,9 @@
+{
+  "extends": "@paymesh/tsconfig/browser.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "types": ["vite/client"],
+    "noEmit": true
+  },
+  "include": ["src", "vite.config.ts"]
+}

@@ -5,7 +5,7 @@ import { generateId } from '@paymesh/db';
 import { AuditService } from '../audit/audit.service';
 import { EventService } from '../queue/event.service';
 import { ENV } from '../common/tokens';
-import { AppEnv } from '@paymesh/config';
+import { AppEnv, getDestinationChainIds, getChain } from '@paymesh/config';
 import type { CreateDepositIntentDto } from './dto';
 
 @Injectable()
@@ -18,11 +18,22 @@ export class DepositIntentsService {
   ) {}
 
   async create(clientId: string, dto: CreateDepositIntentDto) {
-    if (dto.toChain !== this.env.PAYMESH_DEST_CHAIN_ID) {
+    const destinationChainIds = getDestinationChainIds(this.env);
+    if (!destinationChainIds.includes(dto.toChain)) {
       throw new PayMeshError(
         'INVALID_DESTINATION_CHAIN',
-        `Only Polygon Amoy (${this.env.PAYMESH_DEST_CHAIN_ID}) is enabled for settlement`,
-        'This deposit destination is not currently supported.',
+        `Destination chain ${dto.toChain} is not enabled. Enabled chains: ${destinationChainIds.join(', ')}`,
+        'This destination chain is not enabled for this Depowar integration.',
+        400,
+      );
+    }
+    try {
+      getChain(dto.toChain);
+    } catch {
+      throw new PayMeshError(
+        'UNSUPPORTED_CHAIN',
+        `Destination chain ${dto.toChain} is not in the Depowar chain registry`,
+        'This destination chain is not supported by Depowar.',
         400,
       );
     }

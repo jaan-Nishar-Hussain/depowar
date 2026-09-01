@@ -10,6 +10,7 @@ function messageOf(error: unknown): string {
 }
 
 const ERC20_DECIMALS_ABI = [{ type: 'function' as const, name: 'decimals', stateMutability: 'view' as const, inputs: [], outputs: [{ type: 'uint8' as const }] }];
+const SUPPORTED_MAINNET_CHAINS = [1, 8453, 137, 43114, 42161, 10, 59144, 143];
 
 /** Converts a human decimal amount (e.g. "0.01") into base units ("10000000000000000"). */
 function toBaseUnits(input: string, decimals: number): string {
@@ -107,7 +108,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
 
   const connected = isConnected && !!address && !!chain;
   const isSigning = status === 'signing';
-  const supportedChains = [1, 8453, 137, 43114, 42161, 10, 59144, 143];
+  const supportedChains = SUPPORTED_MAINNET_CHAINS;
   const baseSourceToken = config.fromTokenByChain?.[chain?.id ?? 0] ?? config.fromToken ?? 'native';
   const tokenOptions = config.supportedTokensByChain?.[chain?.id ?? 0]?.filter((token) => token.address) ?? [{ symbol: tokenLabel(baseSourceToken), address: baseSourceToken }];
   const [selectedToken, setSelectedToken] = useState<string>();
@@ -243,7 +244,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
   const handleSwipe = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
     if (isSigning || status === 'quoting' || (quote && status !== 'ready') || (!quote && !amount)) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    const max = Math.max(0, rect.width - 64);
+    const max = Math.max(0, rect.width - 50);
     const startX = event.clientX;
     const startOffset = swipeOffset;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -386,7 +387,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
             <div className="pm-range-labels"><span>$0</span><span>$50</span><span>$100</span><span>$150</span></div>
           </div>
 
-          {(![1, 8453, 137, 11155111, 84532].includes(chain!.id)) && (
+          {(!SUPPORTED_MAINNET_CHAINS.includes(chain!.id)) && (
             <div className="pm-status pm-status--error">
               Connect to a supported mainnet network to send this deposit.
             </div>
@@ -402,16 +403,15 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
                 onPointerDown={handleSwipe}
                 onClick={() => { if (!swipeOffset) finishSwipe(); }}
                 onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); finishSwipe(); } }}
-                disabled={status === 'quoting' || !amount || ![1, 8453, 137, 43114, 42161, 10, 59144, 143].includes(chain!.id)}
+                disabled={status === 'quoting' || !amount || !SUPPORTED_MAINNET_CHAINS.includes(chain!.id)}
               >
-                <span className="pm-swipe__fill" style={{ width: `calc(70px + ${swipeOffset}px)` }} aria-hidden="true" />
+                <span className="pm-swipe__fill" style={{ width: `calc(50px + ${swipeOffset}px)` }} aria-hidden="true" />
                 <span className="pm-swipe__thumb" style={{ transform: `translateX(${swipeOffset}px)` }}>
-                  <TokenIcon symbol={sourceSymbol} size={56} />
+                  <TokenIcon symbol={sourceSymbol} size={38} />
                 </span>
                 <span className="pm-swipe__label">{status === 'quoting' ? 'Getting quote…' : 'Swipe to continue'}</span>
-                <span className="pm-swipe__destination"><NetworkIcon chainId={config.toChain} size={40} /></span>
               </button>
-              <div className="pm-swipe__route">{sourceSymbol} on {chainLabel(chain.id)} → {tokenLabel(config.toToken)} on Polygon</div>
+              <div className="pm-swipe__route">{sourceSymbol} on {chainLabel(chain.id)}</div>
             </>
           )}
 
@@ -439,14 +439,13 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
                 onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); finishSwipe(); } }}
                 disabled={isSigning}
               >
-                <span className="pm-swipe__fill" style={{ width: `calc(70px + ${swipeOffset}px)` }} aria-hidden="true" />
+                <span className="pm-swipe__fill" style={{ width: `calc(50px + ${swipeOffset}px)` }} aria-hidden="true" />
                 <span className="pm-swipe__thumb" style={{ transform: `translateX(${swipeOffset}px)` }}>
-                  <TokenIcon symbol={sourceSymbol} size={56} />
+                  <TokenIcon symbol={sourceSymbol} size={38} />
                 </span>
                 <span className="pm-swipe__label">{isSigning ? 'Confirming…' : 'Swipe to confirm'}</span>
-                <span className="pm-swipe__destination"><NetworkIcon chainId={config.toChain} size={40} /></span>
               </button>
-              <div className="pm-swipe__route">{sourceSymbol} on {chainLabel(chain.id)} → {tokenLabel(config.toToken)} on Polygon</div>
+              <div className="pm-swipe__route">{sourceSymbol} on {chainLabel(chain.id)}</div>
             </div>
           )}
 

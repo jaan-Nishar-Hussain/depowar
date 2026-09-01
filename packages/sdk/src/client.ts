@@ -103,6 +103,11 @@ export class PayMeshClient {
     return this.request('/chains');
   }
 
+  /** Lists the destination chains enabled by the Depowar deployment. */
+  listDestinationChains(): Promise<Array<{ id: number; name: string; testnet: boolean }>> {
+    return this.request('/destination-chains');
+  }
+
   listTokens(chainId: number): Promise<Array<{ symbol: string; name: string; decimals: number; native?: boolean }>> {
     return this.request(`/tokens?chainId=${chainId}`);
   }

@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createPublicClient, http, type Address } from 'viem';
-import { AppEnv, cctpDomain, cctpTokenMessenger, getChain, getToken, mainnetUniswap } from '@paymesh/config';
+import { AppEnv, cctpDomain, cctpTokenMessenger, getChain, getDestinationChainIds, getToken, mainnetUniswap } from '@paymesh/config';
 import {
   routeNotFound,
   createMockDexAdapter,
@@ -36,8 +36,9 @@ export class DefaultRoutingProvider implements RoutingProvider {
   constructor(@Inject(ENV) private readonly env: AppEnv) {}
 
   async getQuote(req: QuoteRequest): Promise<RoutingQuoteResult> {
-    if (req.toChain !== this.env.PAYMESH_DEST_CHAIN_ID) {
-      throw routeNotFound({ reason: `settlement is restricted to chain ${this.env.PAYMESH_DEST_CHAIN_ID}` });
+    const destinationChainIds = getDestinationChainIds(this.env);
+    if (!destinationChainIds.includes(req.toChain)) {
+      throw routeNotFound({ reason: `destination chain ${req.toChain} is not enabled; enabled chains: ${destinationChainIds.join(', ')}` });
     }
 
     const source = req.fromChain === 11155111
@@ -90,16 +91,24 @@ export class DefaultRoutingProvider implements RoutingProvider {
           : [];
     const sourceUsdc = getToken(req.fromChain, 'USDC')?.address;
     const cctpMessenger = cctpTokenMessenger(req.fromChain);
-    const destinationUsdc = getToken(this.env.PAYMESH_DEST_CHAIN_ID, 'USDC')?.address;
-    const bridgeAdapters = this.env.CCTP_ENABLED && cctpMessenger && sourceUsdc && destinationUsdc
+    const destinationUsdc = getToken(req.toChain, 'USDC')?.address;
+    // CCTP is only available on Circle-supported domains. Other enabled
+    // destinations are handled by LI.FI (or another external provider).
+    let destinationDomain: number | undefined;
+    try {
+      destinationDomain = cctpDomain(req.toChain);
+    } catch {
+      destinationDomain = undefined;
+    }
+    const bridgeAdapters = this.env.CCTP_ENABLED && cctpMessenger && sourceUsdc && destinationUsdc && destinationDomain !== undefined
       ? [createCctpAdapter({
           publicClient,
           tokenMessenger: cctpMessenger as Address,
           sourceUsdc: sourceUsdc as Address,
           destinationUsdc: destinationUsdc as Address,
           sourceChainId: req.fromChain,
-          destinationChainId: this.env.PAYMESH_DEST_CHAIN_ID,
-          destinationDomain: cctpDomain(this.env.PAYMESH_DEST_CHAIN_ID),
+          destinationChainId: req.toChain,
+          destinationDomain,
           maxFee: this.env.CCTP_MAX_FEE,
           minFinalityThreshold: this.env.CCTP_MIN_FINALITY_THRESHOLD,
         })]
@@ -107,7 +116,7 @@ export class DefaultRoutingProvider implements RoutingProvider {
         ? [createMockBridgeAdapter({
             publicClient,
             bridgeAddress: source.bridge as Address,
-            destChainId: this.env.PAYMESH_DEST_CHAIN_ID,
+            destChainId: req.toChain,
             supportedFromChains: [req.fromChain],
             supportedToChains: [req.toChain],
           })]

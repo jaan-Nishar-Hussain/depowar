@@ -44,6 +44,9 @@ const EnvSchema = z.object({
   // On-chain routing defaults (anvil-local first, overridden after deploys)
   PAYMESH_SOURCE_CHAIN_ID: z.coerce.number().default(31337),
   PAYMESH_DEST_CHAIN_ID: z.coerce.number().default(80002),
+  // Comma-separated destination allowlist. Empty preserves the legacy single
+  // destination setting above. Example: 137,42161,8453
+  PAYMESH_DEST_CHAIN_IDS: z.string().default(''),
   PAYMESH_DEX_ADDRESS: z.string().default(''),
   PAYMESH_BRIDGE_ADDRESS: z.string().default(''),
   PAYMESH_DEST_BRIDGE_ADDRESS: z.string().default(''),
@@ -136,6 +139,19 @@ export function loadEnv(overrides?: Partial<AppEnv>): AppEnv {
 export function getEnv(): AppEnv {
   if (!cached) cached = loadEnv();
   return cached;
+}
+
+/**
+ * Returns the destinations an integrator may request. The allowlist is kept
+ * server-side so a client cannot route funds to an arbitrary chain; the
+ * selected chain still comes from each deposit intent's `toChain` field.
+ */
+export function getDestinationChainIds(env: AppEnv = getEnv()): number[] {
+  const configured = env.PAYMESH_DEST_CHAIN_IDS
+    .split(',')
+    .map((value) => Number(value.trim()))
+    .filter((value) => Number.isInteger(value) && value > 0);
+  return [...new Set(configured.length > 0 ? configured : [env.PAYMESH_DEST_CHAIN_ID])];
 }
 
 export function resetEnv(): void {

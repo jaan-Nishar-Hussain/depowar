@@ -29,7 +29,7 @@ additional HTTP providers can contribute alternative executable routes through
 `LIFI_ENABLED=true` or `ROUTE_PROVIDER_URLS`. Providers are scored together;
 an unavailable quote is discarded rather than treated as liquidity.
 
-Set `PAYMESH_DEST_CHAIN_ID=137`, use production RPCs, set
+Set `PAYMESH_DEST_CHAIN_ID=137` (or set `PAYMESH_DEST_CHAIN_IDS=137,8453,42161` to enable multiple destinations), use production RPCs, set
 `CCTP_IRIS_API_URL=https://iris-api.circle.com`, configure the destination
 MessageTransmitter and a dedicated relayer, then perform a small canary. Do
 not reuse testnet keys or enable mock routes in production. Mainnet protocol
