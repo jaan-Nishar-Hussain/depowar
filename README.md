@@ -36,11 +36,33 @@ not reuse testnet keys or enable mock routes in production. Mainnet protocol
 addresses are kept in `.env.example` and should be checked against the
 official deployment registries before launch.
 
+### Developer management API
+
+Management endpoints use an API key with the `management` scope. A dashboard
+can use them to configure a project without exposing LI.FI credentials:
+
+```text
+GET    /v1/project
+PUT    /v1/project                  { "name": "My integration" }
+GET    /v1/api-keys
+POST   /v1/api-keys                 { "scopes": ["deposits", "quote"] }
+DELETE /v1/api-keys/:id
+GET    /v1/recipients
+POST   /v1/recipients               { "walletAddress": "0x...", "chainId": 137, "token": "0x..." }
+GET    /v1/analytics/overview?days=30
+```
+
+`POST /v1/api-keys` returns the plaintext key once; only its hash is stored.
+The recipient response contains the `recipientId` used by the SDK. The server
+validates the destination chain against `PAYMESH_DEST_CHAIN_IDS` and validates
+the token against the chain registry.
+
 ## Repo layout (Turborepo 2 + pnpm)
 
 ```
 apps/
   web/        # Vite + React widget host (Playwright + Synpress E2E)
+  dashboard/  # Vite + React developer dashboard (port 5174)
   worker/     # BullMQ consumers: tx-monitor, bridge settlement, fallback, webhook dispatch
 packages/
   api/        # NestJS REST server (auth, quotes, deposit intents, status, webhooks, screening)

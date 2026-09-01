@@ -108,6 +108,30 @@ export class PayMeshClient {
     return this.request('/destination-chains');
   }
 
+  getProject(): Promise<unknown> { return this.request('/project'); }
+
+  updateProject(name: string): Promise<unknown> {
+    return this.request('/project', { method: 'PUT', body: JSON.stringify({ name }) });
+  }
+
+  listApiKeys(): Promise<unknown[]> { return this.request('/api-keys'); }
+
+  createApiKey(scopes?: string[]): Promise<{ id: string; key: string; scopes: string[]; warning: string }> {
+    return this.request('/api-keys', { method: 'POST', body: JSON.stringify(scopes ? { scopes } : {}) });
+  }
+
+  revokeApiKey(id: string): Promise<{ revoked: boolean }> {
+    return this.request(`/api-keys/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  listRecipients(): Promise<unknown[]> { return this.request('/recipients'); }
+
+  createRecipient(input: { walletAddress: Address; chainId: number; token: string }): Promise<unknown> {
+    return this.request('/recipients', { method: 'POST', body: JSON.stringify(input) });
+  }
+
+  getAnalytics(days = 30): Promise<unknown> { return this.request(`/analytics/overview?days=${days}`); }
+
   listTokens(chainId: number): Promise<Array<{ symbol: string; name: string; decimals: number; native?: boolean }>> {
     return this.request(`/tokens?chainId=${chainId}`);
   }

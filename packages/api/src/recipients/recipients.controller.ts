@@ -1,13 +1,25 @@
-import { Body, Controller, Get, Inject, Param, Put } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Post, Put } from '@nestjs/common';
 import { ZodPipe } from '../common/zod.pipe';
 import { stringifyBigInts } from '../common/serialize';
 import { Client, Scopes, type ClientContext } from '../auth/decorators';
-import { SettlementUpdateSchema, type SettlementUpdateDto } from './dto';
+import { CreateRecipientSchema, SettlementUpdateSchema, type CreateRecipientDto, type SettlementUpdateDto } from './dto';
 import { RecipientsService } from './recipients.service';
 
 @Controller('recipients')
 export class RecipientsController {
   constructor(@Inject(RecipientsService) private readonly service: RecipientsService) {}
+
+  @Get()
+  @Scopes('management')
+  async list(@Client() client: ClientContext) {
+    return stringifyBigInts(await this.service.list(client.id));
+  }
+
+  @Post()
+  @Scopes('management')
+  async create(@Client() client: ClientContext, @Body(new ZodPipe(CreateRecipientSchema)) dto: CreateRecipientDto) {
+    return stringifyBigInts(await this.service.create(client.id, dto));
+  }
 
   @Get(':id')
   @Scopes('recipients')

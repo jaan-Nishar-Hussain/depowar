@@ -16,6 +16,9 @@ import { StatusModule } from './status/status.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { ChainsTokensModule } from './chains-tokens/chains-tokens.module';
 import { RecipientsModule } from './recipients/recipients.module';
+import { ProjectsModule } from './projects/projects.module';
+import { ApiKeysModule } from './api-keys/api-keys.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { HealthController } from './health.controller';
 import { ENV } from './common/tokens';
 
@@ -40,6 +43,9 @@ import { ENV } from './common/tokens';
     WebhooksModule,
     ChainsTokensModule,
     RecipientsModule,
+    ProjectsModule,
+    ApiKeysModule,
+    AnalyticsModule,
   ],
   controllers: [HealthController],
   providers: [

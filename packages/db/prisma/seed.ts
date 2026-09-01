@@ -17,7 +17,7 @@ async function main() {
     data: {
       name: 'PayMesh Development',
       apiKeys: {
-        create: { keyHash: hashApiKey(apiKey), scopes: ['deposits', 'quote', 'webhooks', 'recipients'] },
+        create: { keyHash: hashApiKey(apiKey), scopes: ['deposits', 'quote', 'webhooks', 'recipients', 'management'] },
       },
       webhooks: {
         create: {

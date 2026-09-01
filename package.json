@@ -15,6 +15,7 @@
     "lint": "turbo run lint",
     "dev": "turbo run dev",
     "dev:web": "pnpm --filter @paymesh/web dev",
+    "dev:dashboard": "pnpm --filter @paymesh/dashboard dev",
     "dev:api": "pnpm --filter @paymesh/api dev",
     "dev:worker": "pnpm --filter @paymesh/worker dev",
     "db:migrate": "pnpm --filter @paymesh/db migrate:dev",
