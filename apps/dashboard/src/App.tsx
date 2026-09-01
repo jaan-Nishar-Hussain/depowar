@@ -16,7 +16,7 @@ function authFromHash() {
 }
 
 export function App() {
-  const [activeSection, setActiveSection] = useState(() => ['overview', 'api', 'transactions', 'analytics', 'organization'].includes(window.location.hash.slice(1)) ? window.location.hash.slice(1) : 'overview');
+  const [activeSection, setActiveSection] = useState(() => ['overview', 'projects', 'transactions', 'analytics', 'organization'].includes(window.location.hash.slice(1)) ? window.location.hash.slice(1) : 'overview');
   const [authToken, setAuthToken] = useState(() => localStorage.getItem('paymesh_auth_token') ?? authFromHash().token);
   const [authEmail, setAuthEmail] = useState(() => localStorage.getItem('paymesh_auth_email') ?? (authFromHash().email || 'Signed-in user'));
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -28,6 +28,7 @@ export function App() {
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [keys, setKeys] = useState<unknown[]>([]);
   const [recipients, setRecipients] = useState<unknown[]>([]);
+  const [selectedRecipientId, setSelectedRecipientId] = useState('');
   const [wallet, setWallet] = useState('');
   const [chainId, setChainId] = useState(137);
   const [token, setToken] = useState('USDC');
@@ -39,7 +40,7 @@ export function App() {
     setMessage('Loading project data…');
     try {
       const [p, a, k, r] = await Promise.all([sdk.getProject(), sdk.getAnalytics(), sdk.listApiKeys(), sdk.listRecipients()]);
-      setProject(p as Project); setProjectName((p as Project).name); setAnalytics(a as Analytics); setKeys(k); setRecipients(r); setMessage('Connected');
+      setProject(p as Project); setProjectName((p as Project).name); setAnalytics(a as Analytics); setKeys(k); setRecipients(r); const firstRecipient = (r as any[])[0]; if (firstRecipient) { setSelectedRecipientId(firstRecipient.id); setChainId(firstRecipient.preferredChainId ?? 137); setToken(firstRecipient.preferredToken ?? 'USDC'); } setMessage('Connected');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to load dashboard data.'); }
   }, []);
 
@@ -82,6 +83,15 @@ export function App() {
     try { await client.createRecipient({ walletAddress: wallet as `0x${string}`, chainId, token }); setWallet(''); await load(client); }
     catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to create recipient.'); }
   }
+  async function updateRecipient() {
+    if (!client || !selectedRecipientId) return;
+    try { await client.updateSettlement(selectedRecipientId, { chainId, token }); await load(client); setMessage('Receiver settings updated'); }
+    catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to update receiver settings.'); }
+  }
+  function selectRecipient(id: string) {
+    const recipient = recipients.find((item: any) => item.id === id) as any;
+    setSelectedRecipientId(id); if (recipient) { setChainId(recipient.preferredChainId ?? 137); setToken(recipient.preferredToken ?? 'USDC'); }
+  }
   async function createKey() {
     if (!client) return;
     try { const result = await client.createApiKey(['deposits', 'quote', 'webhooks']); setNewKey(result.key); await load(client); }
@@ -95,7 +105,7 @@ export function App() {
 
   const navItems = [
     ['overview', 'Overview', 'grid'],
-    ['api', 'APIs', 'key'],
+    ['projects', 'Projects', 'key'],
     ['transactions', 'Transactions', 'receipt'],
     ['analytics', 'Analytics', 'chart'],
     ['organization', 'Organizations', 'building'],
@@ -115,7 +125,7 @@ export function App() {
         <section className="stats"><Stat label="Deposits" value={analytics?.totalDeposits ?? '—'} /><Stat label="Settled" value={analytics?.settledDeposits ?? '—'} /><Stat label="Success rate" value={analytics ? `${(analytics.successRate * 100).toFixed(1)}%` : '—'} /><Stat label="Avg. settlement" value={analytics ? `${analytics.averageSettlementTimeSeconds}s` : '—'} /></section>
         <section className="card"><p className="eyebrow">SETTLEMENT DESTINATION</p><h2>Recipient</h2><p className="muted">Funds will settle to this wallet on the selected chain and token.</p><label>Wallet address<input value={wallet} onChange={(e) => setWallet(e.target.value)} placeholder="0x…" /></label><div className="two"><label>Destination chain<select value={chainId} onChange={(e) => setChainId(Number(e.target.value))}>{CHAINS.map(([id, name]) => <option value={id} key={id}>{name} · {id}</option>)}</select></label><label>Token<select value={token} onChange={(e) => setToken(e.target.value)}><option>USDC</option><option>USDT</option></select></label></div><button className="primary" disabled={!client || !wallet} onClick={createRecipient}>Save destination</button>{recipients.length > 0 && <div className="records">{recipients.slice(0, 3).map((r: any) => <div className="record" key={r.id}><span>{r.walletAddress.slice(0, 8)}…{r.walletAddress.slice(-6)}</span><span>{r.preferredChainId} · {r.preferredToken === 'native' ? 'native' : token}</span></div>)}</div>}</section>
       </>}
-      {activeSection === 'api' && <section className="card page-card"><div className="section-head"><div><p className="eyebrow">ACCESS</p><h2>API keys</h2></div><button onClick={createKey} disabled={!client}>Create key</button></div><p className="muted">Keys authenticate SDK requests. The plaintext is shown only once.</p>{newKey && <div className="secret"><code>{newKey}</code><button onClick={() => navigator.clipboard?.writeText(newKey)}>Copy</button></div>}<div className="records">{keys.slice(0, 5).map((k: any) => <div className="record" key={k.id}><span><code>{k.id}</code></span><span>{k.enabled ? 'Active' : 'Revoked'}</span></div>)}</div></section>}
+      {activeSection === 'projects' && <section className="project-page"><div className="project-heading"><p className="eyebrow">PROJECT SETTINGS</p><h2>{project?.name ?? 'Your project'}</h2><p className="muted">Manage API access and the receiver settlement destination for this project.</p></div><div className="grid"><section className="card"><div className="section-head"><div><p className="eyebrow">ACCESS</p><h2>API keys</h2></div><button onClick={createKey} disabled={!client}>Create key</button></div><p className="muted">Keys authenticate SDK requests. The plaintext is shown only once.</p>{newKey && <div className="secret"><code>{newKey}</code><button onClick={() => navigator.clipboard?.writeText(newKey)}>Copy</button></div>}<div className="records">{keys.slice(0, 5).map((k: any) => <div className="record" key={k.id}><span><code>{k.id}</code></span><span>{k.enabled ? 'Active' : 'Revoked'}</span></div>)}</div></section><section className="card"><div className="section-head"><div><p className="eyebrow">RECEIVER SETTINGS</p><h2>Settlement destination</h2></div></div><p className="muted">Choose where funds for this project should be settled. You can update the chain and token at any time.</p>{recipients.length > 0 ? <><label>Receiver<select value={selectedRecipientId || (recipients[0] as any).id} onChange={(e) => selectRecipient(e.target.value)}>{recipients.map((r: any) => <option value={r.id} key={r.id}>{r.walletAddress.slice(0, 8)}…{r.walletAddress.slice(-6)}</option>)}</select></label><div className="two"><label>Settlement chain<select value={chainId} onChange={(e) => setChainId(Number(e.target.value))}>{CHAINS.map(([id, name]) => <option value={id} key={id}>{name} · {id}</option>)}</select></label><label>Token<select value={token} onChange={(e) => setToken(e.target.value)}><option>USDC</option><option>USDT</option></select></label></div><button className="primary" onClick={updateRecipient} disabled={!client || !(selectedRecipientId || (recipients[0] as any).id)}>Update receiver</button></> : <p className="empty">No receiver configured yet. Add the first receiver from the Overview page.</p>}</section></div></section>}
       {activeSection === 'transactions' && <section className="card table-card page-card"><div className="section-head"><div><p className="eyebrow">ACTIVITY</p><h2>Transactions</h2></div><span className="muted">Last 30 days</span></div><div className="table">{analytics?.recentDeposits?.length ? analytics.recentDeposits.map((d) => <div className="row" key={d.id}><code>{d.id}</code><span>{d.toChainId}</span><span>{d.status}</span></div>) : <p className="empty">No deposits in this period.</p>}</div></section>}
       {activeSection === 'analytics' && <section className="card analytics-card page-card"><div className="section-head"><div><p className="eyebrow">INSIGHTS</p><h2>Analytics</h2></div><span className="muted">Last 30 days</span></div><p className="muted">Monitor deposit volume and settlement performance across your project.</p><div className="analytics-grid"><div className="metric"><span>Total deposits</span><strong>{analytics?.totalDeposits ?? '—'}</strong></div><div className="metric"><span>Settled deposits</span><strong>{analytics?.settledDeposits ?? '—'}</strong></div><div className="metric"><span>Success rate</span><strong>{analytics ? `${(analytics.successRate * 100).toFixed(1)}%` : '—'}</strong></div><div className="metric"><span>Avg. settlement</span><strong>{analytics ? `${analytics.averageSettlementTimeSeconds}s` : '—'}</strong></div></div><div className="chart-placeholder"><span>Settlement activity</span><small>{analytics?.recentDeposits?.length ? 'Recent activity is available in Transactions.' : 'No chart data for this period yet.'}</small></div></section>}
       {activeSection === 'organization' && <section className="card organization-card page-card"><p className="eyebrow">WORKSPACE</p><h2>Organization</h2><p className="muted">Manage the organization name used by your team and SDK integrations.</p><label>Organization name<input value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="Your organization" /></label><button className="primary" disabled={!client || !projectName.trim()} onClick={updateProject}>Save organization</button></section>}
