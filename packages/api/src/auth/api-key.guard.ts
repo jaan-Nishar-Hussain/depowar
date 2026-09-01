@@ -11,12 +11,16 @@ import { hashApiKey } from '@paymesh/db';
 import { PrismaService } from '../prisma/prisma.service';
 import { IS_PUBLIC_KEY, SCOPES_KEY, ClientContext } from './decorators';
 import { PayMeshError } from '../common/errors';
+import { AuthService } from './auth.service';
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
   private readonly reflector = new Reflector();
 
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(AuthService) private readonly auth: AuthService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
@@ -27,6 +31,13 @@ export class ApiKeyGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest<Request>();
     const key = request.headers['x-api-key'];
+    const authorization = request.headers.authorization;
+
+    if ((!key || typeof key !== 'string') && authorization?.startsWith('Bearer ')) {
+      const claims = this.auth.verify(authorization.slice(7));
+      (request as Request & { client: ClientContext }).client = { id: claims.clientId, scopes: ['*'] };
+      return true;
+    }
 
     if (!key || typeof key !== 'string') {
       throw new PayMeshError(

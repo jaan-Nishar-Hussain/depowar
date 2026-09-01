@@ -10,9 +10,19 @@ const CHAINS = [
 type Project = { id: string; name: string; _count?: { apiKeys: number; recipients: number; depositIntents: number } };
 type Analytics = { totalDeposits: number; settledDeposits: number; successRate: number; averageSettlementTimeSeconds: number; recentDeposits: Array<{ id: string; status: string; toChainId: number; toToken: string }> };
 
+function authFromHash() {
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  return { token: params.get('auth_token') ?? '', email: params.get('auth_email') ?? '' };
+}
+
 export function App() {
-  const [activeSection, setActiveSection] = useState(() => window.location.hash.slice(1) || 'overview');
-  const [apiKey, setApiKey] = useState(import.meta.env.VITE_API_KEY ?? '');
+  const [activeSection, setActiveSection] = useState(() => ['overview', 'api', 'transactions', 'analytics', 'organization'].includes(window.location.hash.slice(1)) ? window.location.hash.slice(1) : 'overview');
+  const [authToken, setAuthToken] = useState(() => localStorage.getItem('paymesh_auth_token') ?? authFromHash().token);
+  const [authEmail, setAuthEmail] = useState(() => localStorage.getItem('paymesh_auth_email') ?? (authFromHash().email || 'Signed-in user'));
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [organizationName, setOrganizationName] = useState('');
   const [client, setClient] = useState<PayMeshClient | null>(null);
   const [project, setProject] = useState<Project | null>(null);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
@@ -33,16 +43,39 @@ export function App() {
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to load dashboard data.'); }
   }, []);
 
-  function connect() {
-    if (!apiKey.trim()) return setMessage('A management API key is required.');
-    const sdk = new PayMeshClient({ baseUrl: API_URL, apiKey: apiKey.trim() }); setClient(sdk); void load(sdk);
-  }
-  useEffect(() => { if (apiKey && import.meta.env.VITE_API_KEY) connect(); }, []);
   useEffect(() => {
+    const incoming = authFromHash();
+    if (incoming.token) {
+      localStorage.setItem('paymesh_auth_token', incoming.token);
+      if (incoming.email) localStorage.setItem('paymesh_auth_email', incoming.email);
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#overview`);
+    }
     const onHashChange = () => setActiveSection(window.location.hash.slice(1) || 'overview');
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
+  useEffect(() => {
+    if (!authToken) return;
+    const sdk = new PayMeshClient({ baseUrl: API_URL, authToken });
+    setClient(sdk); void load(sdk);
+  }, [authToken, load]);
+
+  async function authenticate() {
+    setMessage(authMode === 'login' ? 'Signing in…' : 'Creating your account…');
+    try {
+      const response = await fetch(`${API_URL}/v1/auth/${authMode}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(authMode === 'login' ? { email, password } : { email, password, organizationName }) });
+      const body = await response.json() as { accessToken?: string; error?: { userMessage?: string } };
+      if (!response.ok || !body.accessToken) throw new Error(body.error?.userMessage ?? 'Unable to authenticate.');
+      localStorage.setItem('paymesh_auth_token', body.accessToken); localStorage.setItem('paymesh_auth_email', email.trim().toLowerCase()); setAuthEmail(email.trim().toLowerCase()); setAuthToken(body.accessToken);
+      const sdk = new PayMeshClient({ baseUrl: API_URL, authToken: body.accessToken }); setClient(sdk); void load(sdk);
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to authenticate.'); }
+  }
+
+  function logout() {
+    localStorage.removeItem('paymesh_auth_token'); localStorage.removeItem('paymesh_auth_email'); setAuthToken(''); setAuthEmail('Signed-in user'); setClient(null); setProject(null); setAnalytics(null);
+  }
+
+  if (!authToken) return <div className="auth-shell"><div className="auth-card"><div className="brand"><span className="brand-mark">D</span><span>Depowar</span></div><p className="eyebrow">{authMode === 'login' ? 'WELCOME BACK' : 'GET STARTED'}</p><h1>{authMode === 'login' ? 'Sign in to your project' : 'Create your account'}</h1><p className="muted">{authMode === 'login' ? 'Access your Depowar developer dashboard.' : 'Set up your organization and start building.'}</p><button className="google-button" onClick={() => { window.location.href = `${API_URL}/v1/auth/google`; }}>Continue with Google</button><div className="auth-divider"><span>or use email</span></div><label>Email address<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" /></label>{authMode === 'register' && <label>Organization name<input value={organizationName} onChange={(e) => setOrganizationName(e.target.value)} placeholder="Your organization" /></label>}<label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" /></label><button className="primary" onClick={authenticate}>{authMode === 'login' ? 'Sign in' : 'Create account'}</button><p className="auth-switch">{authMode === 'login' ? 'New to Depowar?' : 'Already have an account?'} <button onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}>{authMode === 'login' ? 'Create an account' : 'Sign in'}</button></p>{message !== 'Enter a management API key to load your project.' && <p className="auth-error">{message}</p>}</div></div>;
 
   async function createRecipient() {
     if (!client) return;
@@ -75,10 +108,9 @@ export function App() {
       <nav aria-label="Dashboard sections">
         {navItems.map(([id, label, icon]) => <a className={activeSection === id ? 'active' : ''} href={`#${id}`} aria-current={activeSection === id ? 'page' : undefined} key={id}><NavIcon type={icon} />{label}</a>)}
       </nav>
-      <div className="aside-foot">LI.FI routing is managed by Depowar.</div>
+      <div className="sidebar-account"><div className="account-avatar">{authEmail.slice(0, 1).toUpperCase()}</div><div className="account-details"><strong>{authEmail}</strong><span>{project?.name ?? 'Your organization'}</span></div><button className="account-logout" onClick={logout}>Sign out</button></div><div className="aside-foot">LI.FI routing is managed by Depowar.</div>
     </aside>
-    <main><header><div><p className="eyebrow">PROJECT CONSOLE</p><h1>{project?.name ?? 'Your project'}</h1><p className="muted">Configure settlement once. Your users choose their source chain.</p></div><div className="connect"><input aria-label="Management API key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Management API key" type="password" /><button onClick={connect}>Connect</button></div></header>
-      <div className="notice" role="status">{message}<span className="notice-help">Use a key with the <code>management</code> scope. For local development, run <code>pnpm db:seed</code> against a development database and use the key printed once.</span></div>
+    <main><header><div><p className="eyebrow">PROJECT CONSOLE</p><h1>{project?.name ?? 'Your project'}</h1><p className="muted">Configure settlement once. Your users choose their source chain.</p></div></header>
       {activeSection === 'overview' && <>
         <section className="stats"><Stat label="Deposits" value={analytics?.totalDeposits ?? '—'} /><Stat label="Settled" value={analytics?.settledDeposits ?? '—'} /><Stat label="Success rate" value={analytics ? `${(analytics.successRate * 100).toFixed(1)}%` : '—'} /><Stat label="Avg. settlement" value={analytics ? `${analytics.averageSettlementTimeSeconds}s` : '—'} /></section>
         <section className="card"><p className="eyebrow">SETTLEMENT DESTINATION</p><h2>Recipient</h2><p className="muted">Funds will settle to this wallet on the selected chain and token.</p><label>Wallet address<input value={wallet} onChange={(e) => setWallet(e.target.value)} placeholder="0x…" /></label><div className="two"><label>Destination chain<select value={chainId} onChange={(e) => setChainId(Number(e.target.value))}>{CHAINS.map(([id, name]) => <option value={id} key={id}>{name} · {id}</option>)}</select></label><label>Token<select value={token} onChange={(e) => setToken(e.target.value)}><option>USDC</option><option>USDT</option></select></label></div><button className="primary" disabled={!client || !wallet} onClick={createRecipient}>Save destination</button>{recipients.length > 0 && <div className="records">{recipients.slice(0, 3).map((r: any) => <div className="record" key={r.id}><span>{r.walletAddress.slice(0, 8)}…{r.walletAddress.slice(-6)}</span><span>{r.preferredChainId} · {r.preferredToken === 'native' ? 'native' : token}</span></div>)}</div>}</section>

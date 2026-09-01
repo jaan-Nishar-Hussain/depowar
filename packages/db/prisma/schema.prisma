@@ -17,6 +17,20 @@ model Client {
   depositIntents DepositIntent[]
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
+  users          User[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  googleId     String?  @unique
+  clientId     String
+  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([clientId])
 }
 
 model ApiKey {

@@ -3,12 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { App } from './App';
 
 describe('dashboard', () => {
-  it('renders the project control center and management login', () => {
+  it('renders the authentication screen', () => {
     render(<App />);
     expect(screen.getByText('Depowar')).toBeInTheDocument();
-    expect(screen.getByText('Recipient')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Organizations' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Organization' })).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Management API key')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Sign in to your project' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Email address')).toBeInTheDocument();
+    expect(screen.getByLabelText('Password')).toBeInTheDocument();
   });
 });

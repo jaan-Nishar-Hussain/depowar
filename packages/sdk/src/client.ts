@@ -15,7 +15,8 @@ import {
 
 export interface PayMeshClientConfig {
   baseUrl: string;
-  apiKey: string;
+  apiKey?: string;
+  authToken?: string;
 }
 
 /**
@@ -25,11 +26,13 @@ export interface PayMeshClientConfig {
  */
 export class PayMeshClient {
   private readonly baseUrl: string;
-  private readonly apiKey: string;
+  private readonly apiKey?: string;
+  private readonly authToken?: string;
 
   constructor(config: PayMeshClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/+$/, '');
     this.apiKey = config.apiKey;
+    this.authToken = config.authToken;
   }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -37,7 +40,7 @@ export class PayMeshClient {
       ...init,
       headers: {
         'content-type': 'application/json',
-        'x-api-key': this.apiKey,
+        ...(this.authToken ? { authorization: `Bearer ${this.authToken}` } : this.apiKey ? { 'x-api-key': this.apiKey } : {}),
         ...(init?.headers ?? {}),
       },
     });
