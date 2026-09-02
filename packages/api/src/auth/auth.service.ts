@@ -27,9 +27,13 @@ export class AuthService {
     const exists = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (exists) throw new ConflictException('An account with this email already exists.');
     const result = await this.prisma.$transaction(async (tx) => {
-      const client = await tx.client.create({ data: { name: organizationName.trim() } });
-      const user = await tx.user.create({ data: { email: normalizedEmail, passwordHash: passwordHash(password), clientId: client.id } });
-      return { user, client };
+      const user = await tx.user.create({ data: { email: normalizedEmail, passwordHash: passwordHash(password) } });
+      const organization = await tx.organization.create({ data: { name: organizationName.trim(), ownerId: user.id } });
+      const testClient = await tx.client.create({ data: { name: organizationName.trim(), environment: 'TEST' } });
+      const liveClient = await tx.client.create({ data: { name: organizationName.trim(), environment: 'LIVE' } });
+      await tx.project.create({ data: { organizationId: organization.id, name: 'Default project', clientId: testClient.id, liveClientId: liveClient.id } });
+      await tx.membership.create({ data: { userId: user.id, organizationId: organization.id, role: 'OWNER' } });
+      return { user, client: testClient, organization };
     });
     return this.session(result.user.id, result.user.email, result.client.id);
   }
@@ -37,7 +41,7 @@ export class AuthService {
   async login(email: string, password: string) {
     const user = await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
     if (!user || !passwordMatches(password, user.passwordHash)) throw new UnauthorizedException('Invalid email or password.');
-    return this.session(user.id, user.email, user.clientId);
+    return this.sessionForUser(user.id, user.email);
   }
 
   googleLoginUrl() {
@@ -68,14 +72,40 @@ export class AuthService {
     if (!user) user = await this.prisma.user.findUnique({ where: { email: profile.email.toLowerCase() } });
     if (user) {
       if (!user.googleId) user = await this.prisma.user.update({ where: { id: user.id }, data: { googleId: profile.sub } });
-      return this.session(user.id, user.email, user.clientId);
+      return this.sessionForUser(user.id, user.email);
     }
+    return { onboardingToken: this.onboardingToken(profile.sub, profile.email.toLowerCase()), email: profile.email.toLowerCase() };
+  }
+
+  async completeGoogleOnboarding(token: string, organizationName: string) {
+    const pending = this.verifyOnboardingToken(token);
+    const existing = await this.prisma.user.findUnique({ where: { googleId: pending.googleId } });
+    if (existing) return this.sessionForUser(existing.id, existing.email);
     const result = await this.prisma.$transaction(async (tx) => {
-      const client = await tx.client.create({ data: { name: `${profile.email!.split('@')[0]}'s organization` } });
-      const newUser = await tx.user.create({ data: { email: profile.email!.toLowerCase(), googleId: profile.sub, passwordHash: '', clientId: client.id } });
-      return { user: newUser, client };
+      const user = await tx.user.create({ data: { email: pending.email, googleId: pending.googleId, passwordHash: '' } });
+      const organization = await tx.organization.create({ data: { name: organizationName.trim(), ownerId: user.id } });
+      const testClient = await tx.client.create({ data: { name: organizationName.trim(), environment: 'TEST' } });
+      const liveClient = await tx.client.create({ data: { name: organizationName.trim(), environment: 'LIVE' } });
+      await tx.project.create({ data: { organizationId: organization.id, name: 'Default project', clientId: testClient.id, liveClientId: liveClient.id } });
+      await tx.membership.create({ data: { userId: user.id, organizationId: organization.id, role: 'OWNER' } });
+      return { user, client: testClient, organization };
     });
     return this.session(result.user.id, result.user.email, result.client.id);
+  }
+
+  private onboardingToken(googleId: string, email: string) {
+    const payload = base64(JSON.stringify({ googleId, email, exp: Math.floor(Date.now() / 1000) + 10 * 60 }));
+    const signature = base64(createHmac('sha256', this.env.AUTH_JWT_SECRET).update(payload).digest());
+    return `${payload}.${signature}`;
+  }
+
+  private verifyOnboardingToken(token: string): { googleId: string; email: string; exp: number } {
+    const [payload, signature] = token.split('.');
+    const expected = payload ? base64(createHmac('sha256', this.env.AUTH_JWT_SECRET).update(payload).digest()) : '';
+    if (!payload || !signature || signature !== expected) throw new UnauthorizedException('Invalid Google onboarding session.');
+    const result = JSON.parse(Buffer.from(payload, 'base64url').toString()) as { googleId: string; email: string; exp: number };
+    if (!result.googleId || !result.email || result.exp <= Math.floor(Date.now() / 1000)) throw new UnauthorizedException('Google onboarding session expired.');
+    return result;
   }
 
   verify(token: string): Claims {
@@ -94,5 +124,13 @@ export class AuthService {
     const payload = base64(JSON.stringify({ sub: id, clientId, email, iat: now, exp: now + 60 * 60 * 24 * 7 }));
     const signature = base64(createHmac('sha256', this.env.AUTH_JWT_SECRET).update(`${header}.${payload}`).digest());
     return { accessToken: `${header}.${payload}.${signature}`, user: { id, email }, clientId };
+  }
+
+  sessionForClient(id: string, email: string, clientId: string) { return this.session(id, email, clientId); }
+
+  private async sessionForUser(id: string, email: string) {
+    const project = await this.prisma.project.findFirst({ where: { organization: { ownerId: id } }, orderBy: { createdAt: 'asc' }, select: { clientId: true } });
+    if (!project) throw new UnauthorizedException('No project is configured for this account.');
+    return this.session(id, email, project.clientId);
   }
 }

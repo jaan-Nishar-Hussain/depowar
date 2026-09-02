@@ -35,7 +35,16 @@ export class ApiKeyGuard implements CanActivate {
 
     if ((!key || typeof key !== 'string') && authorization?.startsWith('Bearer ')) {
       const claims = this.auth.verify(authorization.slice(7));
+      const validSession = await this.prisma.project.findFirst({
+        where: {
+          OR: [{ clientId: claims.clientId }, { liveClientId: claims.clientId }],
+          organization: { memberships: { some: { userId: claims.sub, status: 'ACTIVE' } } },
+        },
+        select: { clientId: true },
+      });
+      if (!validSession) throw new UnauthorizedException('Session is no longer valid. Please sign in again.');
       (request as Request & { client: ClientContext }).client = { id: claims.clientId, scopes: ['*'] };
+      (request as Request & { user: { id: string; email: string } }).user = { id: claims.sub, email: claims.email };
       return true;
     }
 
@@ -53,7 +62,8 @@ export class ApiKeyGuard implements CanActivate {
       include: { client: true },
     });
 
-    if (!record || !record.enabled) {
+    const expectedPrefix = record?.environment === 'LIVE' ? 'dw_live_' : 'dw_test_';
+    if (!record || !key.startsWith(expectedPrefix) || !record.enabled || !!record.revokedAt || (record.expiresAt && record.expiresAt <= new Date())) {
       throw new UnauthorizedException('Invalid API key');
     }
 

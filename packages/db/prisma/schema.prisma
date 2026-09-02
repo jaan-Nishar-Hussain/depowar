@@ -17,7 +17,9 @@ model Client {
   depositIntents DepositIntent[]
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
-  users          User[]
+  testProject    Project?           @relation("ProjectTestClient")
+  liveProject    Project?           @relation("ProjectLiveClient")
+  environment    String             @default("TEST")
 }
 
 model User {
@@ -25,24 +27,70 @@ model User {
   email        String   @unique
   passwordHash String
   googleId     String?  @unique
-  clientId     String
-  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  ownedOrganizations Organization[] @relation("OrganizationOwner")
+  memberships  Membership[]
+}
 
-  @@index([clientId])
+model Organization {
+  id           String        @id @default(cuid())
+  name         String
+  ownerId      String?
+  owner        User?         @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  memberships  Membership[]
+  projects     Project[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model Membership {
+  id             String       @id @default(cuid())
+  organizationId String
+  userId         String
+  role           String       @default("DEVELOPER")
+  status         String       @default("ACTIVE")
+  invitedBy      String?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, userId])
+  @@index([userId, status])
+}
+
+model Project {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  environment    String       @default("DEVELOPMENT")
+  clientId       String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client         Client       @relation("ProjectTestClient", fields: [clientId], references: [id], onDelete: Cascade)
+  liveClientId   String?      @unique
+  liveClient     Client?      @relation("ProjectLiveClient", fields: [liveClientId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 }
 
 model ApiKey {
   id         String    @id @default(cuid())
   clientId   String
   client     Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  keyPrefix  String
   keyHash    String    @unique
+  name       String?
+  environment String   @default("TEST")
   scopes     String[]  @default(["deposits", "quote", "webhooks"])
   enabled    Boolean   @default(true)
   lastUsedAt DateTime?
+  expiresAt DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
+  revokedAt DateTime?
+
+  @@index([clientId, enabled])
 }
 
 /// Recipient: where and how funds settle (PRD §8).
@@ -55,6 +103,7 @@ model Recipient {
   preferredChainId  Int?
   preferredToken    String?
   kycStatus         String             @default("none") // none | screened | denied
+  amlStatus         String             @default("PENDING_REVIEW")
   settlementConfigs SettlementConfig[]
   depositIntents    DepositIntent[]
   createdAt         DateTime           @default(now())
@@ -72,6 +121,10 @@ model SettlementConfig {
   minAmount      Decimal? @db.Decimal(78, 0)
   maxAmount      Decimal? @db.Decimal(78, 0)
   enabled        Boolean   @default(true)
+  version        Int       @default(1)
+  changeReason   String?
+  changedBy      String?
+  supersededAt   DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 }
@@ -146,6 +199,7 @@ model WebhookSubscription {
   events    String[] // quote.ready | tx.submitted | deposit.settled | deposit.failed
   secret    String
   enabled   Boolean  @default(true)
+  deliveries WebhookDelivery[]
   createdAt DateTime @default(now())
 }
 
@@ -177,4 +231,53 @@ model ErrorLog {
   message   String
   context   Json?
   createdAt DateTime @default(now())
+}
+
+model IdempotencyRecord {
+  id             String   @id @default(cuid())
+  key            String
+  organizationId String?
+  projectId      String?
+  operation      String
+  response       Json
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime
+
+  @@unique([key, operation])
+  @@index([expiresAt])
+}
+
+model WebhookDelivery {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  eventId        String?
+  status         String   @default("PENDING")
+  attempts       Int      @default(0)
+  nextAttemptAt  DateTime?
+  responseCode   Int?
+  lastError      String?
+  deliveredAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  subscription   WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+}
+
+model AnalyticsDaily {
+  id             String   @id @default(cuid())
+  organizationId String
+  projectId      String
+  clientId       String
+  day            DateTime
+  deposits       Int      @default(0)
+  settled        Int      @default(0)
+  failed         Int      @default(0)
+  volume         Decimal  @default(0) @db.Decimal(78, 0)
+  settledVolume  Decimal  @default(0) @db.Decimal(78, 0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([projectId, clientId, day])
+  @@index([organizationId, projectId, day])
 }

@@ -135,6 +135,13 @@ export class PayMeshClient {
 
   getAnalytics(days = 30): Promise<unknown> { return this.request(`/analytics/overview?days=${days}`); }
 
+  listWorkspaces(): Promise<Array<{ id: string; name: string; projects: Array<{ id: string; name: string; clientId?: string; liveClientId?: string }> }>> { return this.request('/workspaces'); }
+  createWorkspace(name: string): Promise<unknown> { return this.request('/workspaces', { method: 'POST', body: JSON.stringify({ name }) }); }
+  switchWorkspace(organizationId: string): Promise<{ accessToken: string; user: { id: string; email: string }; clientId: string }> { return this.request('/workspaces/switch', { method: 'POST', body: JSON.stringify({ organizationId }) }); }
+  listProjects(): Promise<Array<{ id: string; name: string; environment: string; clientId?: string; liveClientId?: string }>> { return this.request('/projects'); }
+  createProject(name: string, receiverAddress: Address, destinationChainId: number, destinationToken: 'USDC' | 'USDT', idempotencyKey?: string): Promise<{ project: { id: string; name: string; environment: string; clientId?: string; liveClientId?: string }; apiKey: { id: string; key: string; scopes: string[]; warning: string } }> { return this.request('/projects', { method: 'POST', headers: idempotencyKey ? { 'idempotency-key': idempotencyKey } : undefined, body: JSON.stringify({ name, receiverAddress, destinationChainId, destinationToken }) }); }
+  switchProject(projectId: string, environment: 'TEST' | 'LIVE' = 'TEST'): Promise<{ accessToken: string; user: { id: string; email: string }; clientId: string }> { return this.request('/projects/switch', { method: 'POST', body: JSON.stringify({ projectId, environment }) }); }
+
   listTokens(chainId: number): Promise<Array<{ symbol: string; name: string; decimals: number; native?: boolean }>> {
     return this.request(`/tokens?chainId=${chainId}`);
   }

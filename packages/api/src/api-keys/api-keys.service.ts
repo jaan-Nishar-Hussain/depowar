@@ -12,18 +12,20 @@ export class ApiKeysService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService, @Inject(AuditService) private readonly audit: AuditService) {}
 
   async list(clientId: string) {
-    return this.prisma.apiKey.findMany({ where: { clientId }, select: { id: true, scopes: true, enabled: true, lastUsedAt: true, createdAt: true, updatedAt: true }, orderBy: { createdAt: 'desc' } });
+    return this.prisma.apiKey.findMany({ where: { clientId }, select: { id: true, keyPrefix: true, name: true, scopes: true, enabled: true, lastUsedAt: true, expiresAt: true, revokedAt: true, createdAt: true, updatedAt: true }, orderBy: { createdAt: 'desc' } });
   }
 
   async create(clientId: string, dto: CreateApiKeyDto) {
-    const key = `dw_live_${randomBytes(24).toString('hex')}`;
-    const record = await this.prisma.apiKey.create({ data: { id: generateId('key'), clientId, keyHash: hashApiKey(key), scopes: dto.scopes ?? DEFAULT_SCOPES } });
+    const client = await this.prisma.client.findUniqueOrThrow({ where: { id: clientId }, select: { environment: true } });
+    const prefix = client.environment === 'LIVE' ? 'dw_live_' : 'dw_test_';
+    const key = `${prefix}${randomBytes(24).toString('hex')}`;
+    const record = await this.prisma.apiKey.create({ data: { id: generateId('key'), clientId, keyPrefix: key.slice(0, 12), keyHash: hashApiKey(key), environment: client.environment, scopes: dto.scopes ?? DEFAULT_SCOPES } });
     await this.audit.record({ clientId, actor: 'api', action: 'api-key.created', entityType: 'ApiKey', entityId: record.id, details: { scopes: record.scopes } });
     return { id: record.id, key, scopes: record.scopes, createdAt: record.createdAt, warning: 'Store this key now. It will not be shown again.' };
   }
 
   async revoke(clientId: string, id: string) {
-    const result = await this.prisma.apiKey.updateMany({ where: { id, clientId, enabled: true }, data: { enabled: false } });
+    const result = await this.prisma.apiKey.updateMany({ where: { id, clientId, enabled: true }, data: { enabled: false, revokedAt: new Date() } });
     if (result.count) await this.audit.record({ clientId, actor: 'api', action: 'api-key.revoked', entityType: 'ApiKey', entityId: id });
     return { revoked: result.count === 1 };
   }

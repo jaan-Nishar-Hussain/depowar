@@ -7,7 +7,6 @@ describe('dashboard', () => {
     render(<App />);
     expect(screen.getByText('Depowar')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Sign in to your project' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Email address')).toBeInTheDocument();
-    expect(screen.getByLabelText('Password')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument();
   });
 });

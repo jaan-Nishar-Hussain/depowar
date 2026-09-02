@@ -14,6 +14,13 @@ export interface ClientContext {
   scopes: string[];
 }
 
+export interface UserContext { id: string; email: string; }
+
+export const CurrentUser = createParamDecorator((_data: unknown, ctx: ExecutionContext): UserContext => {
+  const request = ctx.switchToHttp().getRequest();
+  return request.user as UserContext;
+});
+
 /** Request-scoped client authenticated by the API key guard. */
 export const Client = createParamDecorator((_data: unknown, ctx: ExecutionContext): ClientContext => {
   const request = ctx.switchToHttp().getRequest();

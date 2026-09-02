@@ -5,6 +5,8 @@ import { PayMeshError } from '../common/errors';
 import { generateId } from '@paymesh/db';
 import { getChain, getDestinationChainIds, getToken, getTokens, type AppEnv } from '@paymesh/config';
 import { ENV } from '../common/tokens';
+import { SCREENING_PROVIDER } from '../common/tokens';
+import type { ScreeningProvider } from '../screening/screening.service';
 import type { CreateRecipientDto, SettlementUpdateDto } from './dto';
 
 @Injectable()
@@ -13,6 +15,7 @@ export class RecipientsService {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(ENV) private readonly env: AppEnv,
+    @Inject(SCREENING_PROVIDER) private readonly screening: ScreeningProvider,
   ) {}
 
   async list(clientId: string): Promise<unknown> {
@@ -24,6 +27,10 @@ export class RecipientsService {
   }
 
   async create(clientId: string, dto: CreateRecipientDto): Promise<unknown> {
+    const screening = await this.screening.screen({ walletAddress: dto.walletAddress });
+    if (!screening.allowed) {
+      throw new PayMeshError('FORBIDDEN', 'Receiver screening failed', 'This receiver address cannot be used.', 422);
+    }
     try {
       getChain(dto.chainId);
     } catch {
@@ -52,6 +59,7 @@ export class RecipientsService {
         settlementType: dto.settlementType,
         preferredChainId: dto.chainId,
         preferredToken: token,
+        amlStatus: 'CLEAR',
         settlementConfigs: {
           create: {
             id: generateId('cfg'),
