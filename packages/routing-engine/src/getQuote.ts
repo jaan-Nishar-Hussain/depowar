@@ -1,10 +1,12 @@
-import { encodeFunctionData, type Address } from 'viem';
-import { readArtifact } from '@paymesh/contracts';
 import { effectiveSlippage, type CandidateRoute, type Quote, type QuoteRequest, type RouteHop, type TransactionRequest } from './types';
 import { rankRoutes } from './score';
 import { routeNotFound } from './errors';
 import type { BridgeAdapter, ProviderTelemetry, RouteProvider, SwapAdapter, SwapQuote } from './adapters/types';
 import type { ScoreWeights } from './types';
+import { buildTransferTransaction } from './graph/hops';
+import { searchComposedRoutes } from './graph/search';
+import { validateCandidate } from './simulate/validate';
+import type { RoutingMetricsSink } from './metrics';
 
 export interface GetQuoteDeps {
   swapAdapters: SwapAdapter[];
@@ -12,39 +14,14 @@ export interface GetQuoteDeps {
   routeProviders?: RouteProvider[];
   telemetry?: Record<string, ProviderTelemetry>;
   weights?: ScoreWeights;
-}
-
-const ERC20_ABI = readArtifact('MockERC20').abi;
-
-/** Sends `amountOut` of the destination token to the recipient (terminal hop). */
-function buildTransferTransaction(req: QuoteRequest, amountOut: bigint): TransactionRequest {
-  if (!req.toAddress) {
-    throw new Error('Transfer hop requires a destination address');
-  }
-  if (req.toToken === 'native') {
-    return {
-      to: req.toAddress as Address,
-      data: '0x',
-      value: amountOut,
-      chainId: req.fromChain,
-      from: req.fromAddress,
-    };
-  }
-  return {
-    to: req.toToken as Address,
-    data: encodeFunctionData({
-      abi: ERC20_ABI,
-      functionName: 'transfer',
-      args: [req.toAddress as Address, amountOut],
-    }),
-    value: 0n,
-    chainId: req.fromChain,
-    from: req.fromAddress,
-  };
+  /** Optional metrics sink (PRD §Monitoring). */
+  metrics?: RoutingMetricsSink;
+  /** Maximum adapter legs for composed route-graph paths. */
+  maxHops?: number;
 }
 
 function directCandidate(req: QuoteRequest): CandidateRoute {
-  const transferTx = req.toAddress ? buildTransferTransaction(req, req.fromAmount) : undefined;
+  const transferTx = req.toAddress ? buildTransferTransaction(req, req.fromAmount) ?? undefined : undefined;
   return {
     route: req.toAddress
       ? [
@@ -101,7 +78,7 @@ async function buildSameChainCandidate(
     txs.push(await swap.buildApprovalTransaction(req, req.fromAmount));
   }
   const swapTx = await swap.buildSwapTransaction(req, swapQuote);
-  const transferTx = buildTransferTransaction(req, swapQuote.amountOut);
+  const transferTx = buildTransferTransaction(req, swapQuote.amountOut)!;
   hops.push({
     type: 'swap',
     chainId: req.fromChain,
@@ -320,11 +297,43 @@ export async function getQuote(
     }
   }
 
+  // Route-graph composition (PRD §Route Graph): explores multi-leg paths the
+  // direct enumeration above cannot reach, then merges non-duplicate
+  // candidates into the pool before scoring.
+  const graphCandidates = await searchComposedRoutes(req, deps, { maxHops: deps.maxHops }).catch(() => []);
+  const seen = new Set(candidates.map(routeSignature));
+  for (const candidate of graphCandidates) {
+    const signature = routeSignature(candidate);
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    candidates.push(candidate);
+  }
+
+  // Validation (PRD §Simulation): hard filters before ranking. Graph-composed
+  // candidates that fail are dropped; legacy provider candidates are kept for
+  // compatibility but their failures are recorded for observability.
+  for (const candidate of [...candidates]) {
+    const validation = validateCandidate(candidate, req);
+    if (!validation.valid) {
+      deps.metrics?.recordRouteDiscarded(validation.reasons[0] ?? 'invalid');
+      if (candidate.adapterId.startsWith('graph:')) {
+        candidates.splice(candidates.indexOf(candidate), 1);
+      }
+    }
+  }
+
+  const quoteStartedAt = Date.now();
   const ranked = rankRoutes(candidates, req, deps.weights, deps.telemetry);
   const bestRoute = ranked[0];
   if (!bestRoute) {
+    deps.metrics?.recordQuoteLatency(Date.now() - quoteStartedAt, 'route_not_found');
     throw routeNotFound({ request: req });
   }
+
+  const distinctAdapters = new Set(ranked.map((route) => route.adapterId));
+  for (const adapterId of distinctAdapters) deps.metrics?.recordRouteConsidered(adapterId);
+  deps.metrics?.recordRouteChosen(bestRoute.adapterId);
+  deps.metrics?.recordQuoteLatency(Date.now() - quoteStartedAt, 'ok');
 
   const toQuote = (route: CandidateRoute): Quote => ({
     ...route,
@@ -337,4 +346,11 @@ export async function getQuote(
     alternates: ranked.slice(1).map(toQuote),
     candidates: ranked,
   };
+}
+
+/** Structural signature used to de-duplicate equivalent candidate routes. */
+function routeSignature(route: CandidateRoute): string {
+  return route.route
+    .map((hop) => `${hop.type}:${hop.protocol ?? ''}:${hop.chainId ?? hop.fromChain ?? ''}:${hop.toChain ?? ''}:${hop.toToken ?? ''}:${hop.amountOut ?? ''}`)
+    .join('|');
 }

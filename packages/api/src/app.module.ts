@@ -20,6 +20,7 @@ import { ProjectsModule as ProjectManagementModule } from './projects/projects.m
 import { ApiKeysModule } from './api-keys/api-keys.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
+import { MetricsModule } from './metrics/metrics.module';
 import { HealthController } from './health.controller';
 import { ENV } from './common/tokens';
 
@@ -48,6 +49,7 @@ import { ENV } from './common/tokens';
     ApiKeysModule,
     AnalyticsModule,
     WorkspacesModule,
+    MetricsModule,
   ],
   controllers: [HealthController],
   providers: [

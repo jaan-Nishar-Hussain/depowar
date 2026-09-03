@@ -4,9 +4,10 @@ import { QuoteService } from './quote.service';
 import { DefaultRoutingProvider } from './routing.provider';
 import { ROUTING_PROVIDER } from '../common/tokens';
 import { ScreeningModule } from '../screening/screening.module';
+import { MetricsModule } from '../metrics/metrics.module';
 
 @Module({
-  imports: [ScreeningModule],
+  imports: [ScreeningModule, MetricsModule],
   controllers: [QuoteController],
   providers: [QuoteService, { provide: ROUTING_PROVIDER, useClass: DefaultRoutingProvider }],
   exports: [QuoteService],

@@ -57,6 +57,21 @@ The recipient response contains the `recipientId` used by the SDK. The server
 validates the destination chain against `PAYMESH_DEST_CHAIN_IDS` and validates
 the token against the chain registry.
 
+## Next-gen routing engine
+
+The route engine is provider-federated and composes routes through an internal
+route graph: nodes are (chain, token) pairs and adapters provide edges
+(`src/graph/` in `packages/routing-engine`). Candidates — both whole routes
+from LI.FI/HTTP providers and composed multi-leg paths (swap → swap → bridge) —
+are validated with hard filters (output floor, price-impact ceiling, hop
+continuity) before weighted scoring. Optional federated providers are enabled
+via env: 1inch (`ONEINCH_ENABLED`), Across (`ACROSS_ENABLED`, mainnet-only),
+and Chainlink CCIP (`CCIP_ENABLED`, backup rail). Routing KPIs (candidates
+considered/chosen/discard reasons, quote latency, fallback requotes) are
+exposed in Prometheus format at `GET /v1/metrics`. Mid-route failures trigger a
+partial-route fallback that re-quotes from the intermediate (chain, token,
+amount) state so confirmed hops are never double-counted.
+
 ## Repo layout (Turborepo 2 + pnpm)
 
 ```

@@ -6,6 +6,7 @@ import { generateId } from '@paymesh/db';
 import { readArtifact } from '@paymesh/contracts';
 import {
   getFallbackQuote,
+  getFallbackQuoteFromHop,
   createDefaultAdapters,
   createRouteApiAdapter,
   createLifiRouteProvider,
@@ -393,21 +394,48 @@ async function waitForDestinationSettlement(
 
 async function triggerFallback(
   ctx: WorkerContext,
-  quote: { id: string; depositIntentId: string; routePath: unknown },
+  quote: { id: string; depositIntentId: string; fromChainId: number; fromToken: string; fromAmount: unknown; routePath: unknown },
   failedHopIndex: number,
 ): Promise<void> {
   const route = (quote.routePath as unknown as RouteHopLike[]) ?? [];
   const failedAdapterId = route[failedHopIndex]?.protocol ?? null;
+
+  // Partial-route fallback (PRD §Execution & Fallback): if earlier hops
+  // confirmed, funds now sit in an intermediate (chain, token, amount) state.
+  // The fallback re-quote must start from that state, not from the original
+  // input, or the remaining amount would be double-counted.
+  const previous = failedHopIndex > 0 ? route[failedHopIndex - 1] : undefined;
+  const prevSettled = previous && (previous.type === 'swap' || previous.type === 'bridge' || previous.type === 'transfer')
+    ? previous
+    : undefined;
+  const mid = prevSettled && prevSettled.amountOut
+    ? {
+        completedHops: failedHopIndex,
+        currentChain: prevSettled.toChain ?? prevSettled.chainId ?? quote.fromChainId,
+        currentToken: prevSettled.toToken ?? quote.fromToken,
+        currentAmount: prevSettled.amountOut.toString(),
+      }
+    : undefined;
+
   await enqueueFallback(ctx, {
     depositId: quote.depositIntentId,
     quoteId: quote.id,
     failedAdapterId,
+    ...(mid ?? {}),
   });
 }
 
 /** Re-quotes a deposit excluding the failed adapter, or marks it FAILED. */
 export async function processFallback(
-  job: Job<{ depositId: string; quoteId: string; failedAdapterId?: string | null }>,
+  job: Job<{
+    depositId: string;
+    quoteId: string;
+    failedAdapterId?: string | null;
+    completedHops?: number;
+    currentChain?: number;
+    currentToken?: string;
+    currentAmount?: string;
+  }>,
   ctx: WorkerContext,
 ): Promise<void> {
   const { depositId, quoteId, failedAdapterId } = job.data;
@@ -417,9 +445,26 @@ export async function processFallback(
   ]);
   if (!quote || !deposit) return;
 
-  const sourceContracts = quote.fromChainId === 11155111
+  // Mid-route fallback state (PRD): the chain/token the funds actually sit on.
+  const midRoute = job.data.completedHops && job.data.currentChain && job.data.currentToken && job.data.currentAmount
+    ? {
+        completedHops: job.data.completedHops,
+        currentChain: job.data.currentChain,
+        currentToken: job.data.currentToken,
+        currentAmount: BigInt(job.data.currentAmount),
+      }
+    : undefined;
+  const fromChainId = midRoute?.currentChain ?? quote.fromChainId;
+  const fromToken = midRoute?.currentToken ?? quote.fromToken;
+  const fromAmount = midRoute?.currentAmount ?? BigInt(quote.fromAmount.toString());
+
+  // The effective source state the fallback adapters are built for. For a
+  // mid-route fallback this is the intermediate chain/token/amount.
+  const routeQuote = { ...quote, fromChainId, fromToken, fromAmount };
+
+  const sourceContracts = routeQuote.fromChainId === 11155111
     ? { dex: ctx.env.PAYMESH_SEPOLIA_DEX_ADDRESS, bridge: ctx.env.PAYMESH_SEPOLIA_BRIDGE_ADDRESS }
-    : quote.fromChainId === 84532
+    : routeQuote.fromChainId === 84532
       ? { dex: ctx.env.PAYMESH_BASE_SEPOLIA_DEX_ADDRESS, bridge: ctx.env.PAYMESH_BASE_SEPOLIA_BRIDGE_ADDRESS }
       : { dex: ctx.env.PAYMESH_DEX_ADDRESS, bridge: ctx.env.PAYMESH_BRIDGE_ADDRESS };
 
@@ -436,27 +481,27 @@ export async function processFallback(
       timeoutMs: ctx.env.ROUTE_PROVIDER_TIMEOUT_MS,
     }));
   }
-  const mainnetSwap = quote.fromChainId === 1
+  const mainnetSwap = routeQuote.fromChainId === 1
     ? { router: ctx.env.PAYMESH_ETHEREUM_MAINNET_UNISWAP_V3_ROUTER_ADDRESS, quoter: ctx.env.PAYMESH_ETHEREUM_MAINNET_UNISWAP_V3_QUOTER_ADDRESS }
-    : quote.fromChainId === 8453
+    : routeQuote.fromChainId === 8453
       ? { router: ctx.env.PAYMESH_BASE_MAINNET_UNISWAP_V3_ROUTER_ADDRESS, quoter: ctx.env.PAYMESH_BASE_MAINNET_UNISWAP_V3_QUOTER_ADDRESS }
-      : quote.fromChainId === 137
+      : routeQuote.fromChainId === 137
         ? { router: ctx.env.PAYMESH_POLYGON_MAINNET_UNISWAP_V3_ROUTER_ADDRESS, quoter: ctx.env.PAYMESH_POLYGON_MAINNET_UNISWAP_V3_QUOTER_ADDRESS }
         : { router: '', quoter: '' };
-  const routerConfigured = quote.fromChainId === 11155111
+  const routerConfigured = routeQuote.fromChainId === 11155111
     ? !!ctx.env.PAYMESH_SEPOLIA_DEX_ROUTER_ADDRESS ||
       (!!ctx.env.PAYMESH_SEPOLIA_UNISWAP_V3_ROUTER_ADDRESS && !!ctx.env.PAYMESH_SEPOLIA_UNISWAP_V3_QUOTER_ADDRESS)
-    : quote.fromChainId === 84532
+    : routeQuote.fromChainId === 84532
       ? !!ctx.env.PAYMESH_BASE_SEPOLIA_DEX_ROUTER_ADDRESS ||
         (!!ctx.env.PAYMESH_BASE_SEPOLIA_UNISWAP_V3_ROUTER_ADDRESS && !!ctx.env.PAYMESH_BASE_SEPOLIA_UNISWAP_V3_QUOTER_ADDRESS)
       : !!mainnetSwap.router && !!mainnetSwap.quoter;
   const cctpConfigured = ctx.env.CCTP_ENABLED &&
-    !!(quote.fromChainId === 11155111
+    !!(routeQuote.fromChainId === 11155111
       ? ctx.env.CCTP_SEPOLIA_TOKEN_MESSENGER_ADDRESS
-      : quote.fromChainId === 84532
+      : routeQuote.fromChainId === 84532
         ? ctx.env.CCTP_BASE_SEPOLIA_TOKEN_MESSENGER_ADDRESS
-      : cctpTokenMessenger(quote.fromChainId)) &&
-    !!getToken(quote.fromChainId, 'USDC')?.address &&
+      : cctpTokenMessenger(routeQuote.fromChainId)) &&
+    !!getToken(routeQuote.fromChainId, 'USDC')?.address &&
     !!getToken(deposit.toChainId, 'USDC')?.address;
   if ((!sourceContracts.dex && !sourceContracts.bridge && !routerConfigured && !cctpConfigured) && routeProviders.length === 0) {
     await failDeposit(ctx, depositId, quoteId, 'ROUTING_NOT_CONFIGURED');
@@ -464,49 +509,50 @@ export async function processFallback(
   }
 
   const adapters = createDefaultAdapters({
-    rpcUrl: getChain(quote.fromChainId).rpcUrl,
-    sourceChainId: quote.fromChainId,
+    rpcUrl: getChain(routeQuote.fromChainId).rpcUrl,
+    sourceChainId: routeQuote.fromChainId,
     dexAddress: sourceContracts.dex as Address | undefined,
     bridgeAddress: sourceContracts.bridge as Address | undefined,
     destChainId: deposit.toChainId,
-    dexRouterAddress: (quote.fromChainId === 11155111
+    dexRouterAddress: (routeQuote.fromChainId === 11155111
       ? ctx.env.PAYMESH_SEPOLIA_DEX_ROUTER_ADDRESS
-      : quote.fromChainId === 84532
+      : routeQuote.fromChainId === 84532
         ? ctx.env.PAYMESH_BASE_SEPOLIA_DEX_ROUTER_ADDRESS
         : '') as Address | undefined,
-    wrappedNative: (quote.fromChainId === 11155111
+    wrappedNative: (routeQuote.fromChainId === 11155111
       ? ctx.env.PAYMESH_SEPOLIA_WETH_ADDRESS
-      : quote.fromChainId === 84532
+      : routeQuote.fromChainId === 84532
         ? ctx.env.PAYMESH_BASE_SEPOLIA_WETH_ADDRESS
       : ctx.env.PAYMESH_WETH_ADDRESS) as Address | undefined,
-    uniswapV3RouterAddress: (quote.fromChainId === 11155111
+    uniswapV3RouterAddress: (routeQuote.fromChainId === 11155111
       ? ctx.env.PAYMESH_SEPOLIA_UNISWAP_V3_ROUTER_ADDRESS
-      : quote.fromChainId === 84532
+      : routeQuote.fromChainId === 84532
         ? ctx.env.PAYMESH_BASE_SEPOLIA_UNISWAP_V3_ROUTER_ADDRESS
         : mainnetSwap.router) as Address | undefined,
-    uniswapV3QuoterAddress: (quote.fromChainId === 11155111
+    uniswapV3QuoterAddress: (routeQuote.fromChainId === 11155111
       ? ctx.env.PAYMESH_SEPOLIA_UNISWAP_V3_QUOTER_ADDRESS
-      : quote.fromChainId === 84532
+      : routeQuote.fromChainId === 84532
         ? ctx.env.PAYMESH_BASE_SEPOLIA_UNISWAP_V3_QUOTER_ADDRESS
         : mainnetSwap.quoter) as Address | undefined,
-    cctpTokenMessenger: (quote.fromChainId === 11155111
+    cctpTokenMessenger: (routeQuote.fromChainId === 11155111
       ? ctx.env.CCTP_SEPOLIA_TOKEN_MESSENGER_ADDRESS
-      : quote.fromChainId === 84532
+      : routeQuote.fromChainId === 84532
         ? ctx.env.CCTP_BASE_SEPOLIA_TOKEN_MESSENGER_ADDRESS
-        : cctpTokenMessenger(quote.fromChainId)) as Address | undefined,
-    sourceUsdc: getToken(quote.fromChainId, 'USDC')?.address as Address | undefined,
+        : cctpTokenMessenger(routeQuote.fromChainId)) as Address | undefined,
+    sourceUsdc: getToken(routeQuote.fromChainId, 'USDC')?.address as Address | undefined,
     destinationUsdc: getToken(deposit.toChainId, 'USDC')?.address as Address | undefined,
     cctpEnabled: ctx.env.CCTP_ENABLED,
     cctpDestinationDomain: cctpDomain(deposit.toChainId),
     cctpMaxFee: ctx.env.CCTP_MAX_FEE,
     cctpMinFinalityThreshold: ctx.env.CCTP_MIN_FINALITY_THRESHOLD,
     allowMock: ctx.env.PAYMESH_ALLOW_MOCK_ROUTES,
+    env: ctx.env,
   });
 
   const request: QuoteRequest = {
-    fromChain: quote.fromChainId,
-    fromToken: quote.fromToken,
-    fromAmount: BigInt(quote.fromAmount.toString()),
+    fromChain: routeQuote.fromChainId,
+    fromToken: routeQuote.fromToken,
+    fromAmount: BigInt(routeQuote.fromAmount.toString()),
     toChain: deposit.toChainId,
     toToken: deposit.toToken,
     fromAddress: (quote.fromAddress ?? undefined) as Address | undefined,
@@ -516,11 +562,18 @@ export async function processFallback(
 
   let result;
   try {
-    result = await getFallbackQuote(
-      request,
-      { ...adapters, routeProviders },
-      failedAdapterId ? [failedAdapterId] : [],
-    );
+    result = midRoute
+      ? await getFallbackQuoteFromHop(
+          request,
+          { ...adapters, routeProviders },
+          failedAdapterId ? [failedAdapterId] : [],
+          midRoute,
+        )
+      : await getFallbackQuote(
+          request,
+          { ...adapters, routeProviders },
+          failedAdapterId ? [failedAdapterId] : [],
+        );
   } catch (error) {
     if ((error as { code?: string }).code === 'ROUTE_NOT_FOUND') {
       await failDeposit(ctx, depositId, quoteId, 'ROUTE_NOT_FOUND');
@@ -538,8 +591,8 @@ export async function processFallback(
       data: {
         id: newQuoteId,
         depositIntentId: depositId,
-        fromChainId: quote.fromChainId,
-        fromToken: quote.fromToken,
+        fromChainId: routeQuote.fromChainId,
+        fromToken: routeQuote.fromToken,
         fromAmount: request.fromAmount.toString(),
         fromAddress: quote.fromAddress,
         toAddress: quote.toAddress,
@@ -563,7 +616,7 @@ export async function processFallback(
           quoteId: newQuoteId,
           depositIntentId: depositId,
           hopIndex: i,
-          chainId: hop.chainId ?? quote.fromChainId,
+          chainId: hop.chainId ?? routeQuote.fromChainId,
           status: 'PENDING',
         },
       });

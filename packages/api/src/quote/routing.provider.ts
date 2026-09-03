@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { createPublicClient, http, type Address } from 'viem';
 import { AppEnv, cctpDomain, cctpTokenMessenger, getChain, getDestinationChainIds, getToken, mainnetUniswap } from '@paymesh/config';
 import {
@@ -10,12 +10,18 @@ import {
   createCctpAdapter,
   createRouteApiAdapter,
   createLifiRouteProvider,
+  createOneInchAdapter,
+  createAcrossAdapter,
+  createCcipAdapter,
   RouteHandler,
   type Quote as EngineQuote,
   type QuoteRequest,
 } from '@paymesh/routing-engine';
 import { ENV } from '../common/tokens';
 import { viemChain } from '../common/chains';
+import type { RoutingMetricsService } from '../metrics/routing-metrics.service';
+
+const MAINNET_CHAIN_IDS = new Set([1, 8453, 42161, 10, 137, 43114, 56, 59144]);
 
 export interface RoutingQuoteResult {
   best: EngineQuote;
@@ -33,7 +39,10 @@ export interface RoutingProvider {
  */
 @Injectable()
 export class DefaultRoutingProvider implements RoutingProvider {
-  constructor(@Inject(ENV) private readonly env: AppEnv) {}
+  constructor(
+    @Inject(ENV) private readonly env: AppEnv,
+    @Optional() private readonly metrics?: RoutingMetricsService,
+  ) {}
 
   async getQuote(req: QuoteRequest): Promise<RoutingQuoteResult> {
     const destinationChainIds = getDestinationChainIds(this.env);
@@ -136,11 +145,55 @@ export class DefaultRoutingProvider implements RoutingProvider {
       }));
     }
 
+    // Federated provider additions (PRD §Priority Provider List). Each new
+    // provider is optional and ranked together with the built-in adapters.
+    if (this.env.ONEINCH_ENABLED && this.env.ONEINCH_API_KEY) {
+      swapAdapters.push(createOneInchAdapter({
+        baseUrl: this.env.ONEINCH_API_URL,
+        apiKey: this.env.ONEINCH_API_KEY,
+        routerAddress: this.env.ONEINCH_ROUTER_ADDRESS as Address,
+        chains: [...MAINNET_CHAIN_IDS],
+        timeoutMs: this.env.ROUTE_PROVIDER_TIMEOUT_MS,
+      }));
+    }
+    const mainnetPair = MAINNET_CHAIN_IDS.has(req.fromChain) && MAINNET_CHAIN_IDS.has(req.toChain);
+    if (this.env.ACROSS_ENABLED && mainnetPair) {
+      bridgeAdapters.push(createAcrossAdapter({
+        enabled: true,
+        baseUrl: this.env.ACROSS_API_URL,
+        integratorId: this.env.ACROSS_INTEGRATOR_ID || undefined,
+        apiKey: this.env.ACROSS_API_KEY || undefined,
+        timeoutMs: this.env.ROUTE_PROVIDER_TIMEOUT_MS,
+      }));
+    }
+    if (this.env.CCIP_ENABLED) {
+      for (const entry of this.env.CCIP_ROUTERS.split(',').map((value) => value.split(':').map((part) => part.trim()))) {
+        if (entry.length !== 5 || entry[0] !== String(req.fromChain) || Number(entry[4]) !== req.toChain) continue;
+        const tokenEntry = this.env.CCIP_TOKEN.split(',')
+          .map((part) => part.split(':').map((value) => value.trim()))
+          .find((part) => part[0] === String(req.fromChain));
+        const token = tokenEntry?.[1] ?? sourceUsdc;
+        if (!token) continue;
+        bridgeAdapters.push(createCcipAdapter({
+          publicClient,
+          routerAddress: entry[1] as Address,
+          sourceChainSelector: BigInt(entry[2]!),
+          destinationChainSelector: BigInt(entry[3]!),
+          sourceChainId: req.fromChain,
+          destinationChainId: req.toChain,
+          token: token as Address,
+          destinationToken: (destinationUsdc ?? token) as Address,
+          enabled: true,
+        }));
+      }
+    }
+
     const handler = new RouteHandler({
       dependencies: {
         swapAdapters,
         bridgeAdapters,
         routeProviders: externalProviders,
+        metrics: this.metrics?.metrics,
       },
     });
     const { best, alternates } = await handler.findBestRoute(req);

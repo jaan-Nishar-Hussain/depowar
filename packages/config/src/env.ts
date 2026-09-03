@@ -107,6 +107,31 @@ const EnvSchema = z.object({
   LIFI_API_URL: z.string().default('https://li.quest/v1'),
   LIFI_API_KEY: z.string().default(''),
   LIFI_INTEGRATOR: z.string().default('paymesh'),
+  // Tier-2 DEX aggregator: 1inch (PRD §Priority Provider List).
+  ONEINCH_ENABLED: z.preprocess(
+    (value) => typeof value === 'string' ? value.toLowerCase() === 'true' : value,
+    z.boolean(),
+  ).default(false),
+  ONEINCH_API_URL: z.string().default('https://api.1inch.dev'),
+  ONEINCH_API_KEY: z.string().default(''),
+  ONEINCH_ROUTER_ADDRESS: z.string().default('0x111111125421cA6dc452d289314280a0f8842A65'),
+  // Tier-1 intent bridge: Across. Mainnet-only; enabling on testnets is a no-op.
+  ACROSS_ENABLED: z.preprocess(
+    (value) => typeof value === 'string' ? value.toLowerCase() === 'true' : value,
+    z.boolean(),
+  ).default(false),
+  ACROSS_API_URL: z.string().default('https://api.across.to'),
+  ACROSS_INTEGRATOR_ID: z.string().default(''),
+  ACROSS_API_KEY: z.string().default(''),
+  // Backup rail: Chainlink CCIP. Router/selector pairs are formatted as
+  // "<chainId>:<routerAddress>:<sourceSelector>:<destSelector>" separated by
+  // commas, plus the carry token per source chain "<chainId>:<token>".
+  CCIP_ENABLED: z.preprocess(
+    (value) => typeof value === 'string' ? value.toLowerCase() === 'true' : value,
+    z.boolean(),
+  ).default(false),
+  CCIP_ROUTERS: z.string().default(''),
+  CCIP_TOKEN: z.string().default(''),
   PAYMESH_ALLOW_MOCK_ROUTES: z.preprocess(
     (value) => typeof value === 'string' ? value.toLowerCase() === 'true' : value,
     z.boolean(),
@@ -161,4 +186,45 @@ export function getDestinationChainIds(env: AppEnv = getEnv()): number[] {
 
 export function resetEnv(): void {
   cached = undefined;
+}
+
+/** Parsed CCIP router configuration for one source chain. */
+export interface CcipRouterConfig {
+  routerAddress: string;
+  sourceChainSelector: bigint;
+  destinationChainSelector: bigint;
+  destinationChainId: number;
+  token: string;
+}
+
+/**
+ * Parses CCIP_ROUTERS entries of the form
+ * "<chainId>:<router>:<sourceSelector>:<destSelector>:<destChainId>" and
+ * CCIP_TOKEN entries of "<chainId>:<token>". Returns [] when unconfigured.
+ */
+export function ccipRouterConfigs(env: AppEnv = getEnv()): CcipRouterConfig[] {
+  if (!env.CCIP_ENABLED) return [];
+  const tokens = new Map<number, string>();
+  for (const entry of env.CCIP_TOKEN.split(',')) {
+    const parts = entry.split(':').map((p) => p.trim());
+    const [chainRaw, token] = parts;
+    if (chainRaw && token) tokens.set(Number(chainRaw), token);
+  }
+  const configs: CcipRouterConfig[] = [];
+  for (const entry of env.CCIP_ROUTERS.split(',')) {
+    const parts = entry.split(':').map((value) => value.trim());
+    if (parts.length !== 5) continue;
+    const [chainRaw, router, sourceSelector, destSelector, destChain] = parts;
+    const chainId = Number(chainRaw);
+    const token = tokens.get(chainId);
+    if (!Number.isInteger(chainId) || !router || !sourceSelector || !destSelector || !destChain || !token) continue;
+    configs.push({
+      routerAddress: router,
+      sourceChainSelector: BigInt(sourceSelector),
+      destinationChainSelector: BigInt(destSelector),
+      destinationChainId: Number(destChain),
+      token,
+    });
+  }
+  return configs;
 }
