@@ -6,6 +6,8 @@ export interface RouteHandlerOptions {
   dependencies: GetQuoteDeps;
   telemetry?: Record<string, ProviderTelemetry>;
   weights?: ScoreWeights;
+  /** Record provider outcomes into the process-wide store. */
+  trackTelemetry?: boolean;
 }
 
 export class ProviderTelemetryStore {
@@ -34,6 +36,24 @@ export class ProviderTelemetryStore {
   }
 }
 
+let sharedTelemetryStore: ProviderTelemetryStore | undefined;
+
+/**
+ * Process-wide telemetry singleton. The API constructs a RouteHandler per
+ * quote request; scoring quality depends on reliability/latency history that
+ * must survive across requests, so callers share one store instead of
+ * resetting it per instantiation.
+ */
+export function getSharedTelemetryStore(): ProviderTelemetryStore {
+  if (!sharedTelemetryStore) sharedTelemetryStore = new ProviderTelemetryStore();
+  return sharedTelemetryStore;
+}
+
+/** Test hook: resets the process-wide telemetry singleton. */
+export function resetSharedTelemetryStore(): void {
+  sharedTelemetryStore = undefined;
+}
+
 /**
  * Provider-independent routing facade. Providers only describe what they can
  * execute; this handler owns route selection and returns the best complete
@@ -43,11 +63,16 @@ export class RouteHandler {
   constructor(private readonly options: RouteHandlerOptions) {}
 
   async findBestRoute(request: QuoteRequest): Promise<{ best: Quote; alternates: Quote[] }> {
+    const startedAt = Date.now();
     const result = await getQuote(request, {
       ...this.options.dependencies,
       telemetry: this.options.telemetry,
       weights: this.options.weights,
     });
+    if (this.options.trackTelemetry) {
+      const store = getSharedTelemetryStore();
+      store.record(result.best.adapterId, { success: true, latencyMs: Date.now() - startedAt });
+    }
     return { best: result.best, alternates: result.alternates };
   }
 }

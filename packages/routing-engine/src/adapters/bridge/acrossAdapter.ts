@@ -165,5 +165,14 @@ export function createAcrossAdapter(options: AcrossAdapterOptions): BridgeAdapte
     quoteBridge,
     buildBridgeTransaction,
     buildApprovalTransaction,
+    healthCheck: async () => {
+      if (!options.enabled) return { available: false, reason: 'Across disabled' };
+      try {
+        const res = await fetch(`${baseUrl}/stats/limits`, { signal: AbortSignal.timeout(options.timeoutMs ?? 8_000) });
+        return { available: res.ok, reliability: res.ok ? 0.97 : undefined, reason: res.ok ? undefined : `Across /stats/limits returned ${res.status}` };
+      } catch {
+        return { available: false, reason: 'Across API unreachable' };
+      }
+    },
   };
 }

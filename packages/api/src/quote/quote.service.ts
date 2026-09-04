@@ -1,9 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { createPublicClient, createWalletClient, http, isAddress, type Address, type Hex } from 'viem';
-import { privateKeyToAccount } from 'viem/accounts';
+import { createPublicClient, http, isAddress, type Address, type Hex } from 'viem';
 import { AppEnv, getChain, QUOTE_TTL_SECONDS } from '@paymesh/config';
 import { Prisma, generateId } from '@paymesh/db';
-import type { QuoteRequest, TransactionRequest } from '@paymesh/routing-engine';
+import { createPrivateKeySigner, type QuoteRequest, type TransactionRequest } from '@paymesh/routing-engine';
 import { PrismaService } from '../prisma/prisma.service';
 import { PayMeshError } from '../common/errors';
 import { stringifyBigInts } from '../common/serialize';
@@ -111,6 +110,22 @@ export class QuoteService {
           ) as Prisma.InputJsonValue,
           status: 'ACTIVE',
           expiresAt,
+          providerId: best.adapterId ?? null,
+          simulated: this.env.SIMULATE_QUOTES,
+          score: best.score ?? null,
+          // Losing candidates' summary metrics only (never their transaction
+          // data), so a historical quote can be audited against what it beat
+          // without persisting unused signable transactions.
+          alternatesSnapshot: stringifyBigInts(
+            alternates.map((a) => ({
+              adapterId: a.adapterId,
+              score: a.score ?? null,
+              estimatedOutput: a.estimatedOutput,
+              estimatedFee: a.estimatedFee,
+              estimatedTimeSeconds: a.estimatedTimeSeconds,
+              reliability: a.reliability,
+            })),
+          ) as Prisma.InputJsonValue,
         },
       });
 
@@ -212,7 +227,7 @@ export class QuoteService {
     if (txRequests.length === 0 || txRequests.length !== hops.length) {
       throw new PayMeshError('QUOTE_NOT_EXECUTABLE', 'Quote has no complete execution plan', 'This quote cannot be executed.', 409);
     }
-    const account = privateKeyToAccount(privateKey);
+    const signer = createPrivateKeySigner(privateKey);
     let finalHash: Hex | undefined;
     for (let i = 0; i < txRequests.length; i++) {
       const txReq = txRequests[i]!;
@@ -220,12 +235,13 @@ export class QuoteService {
       if (row.status === 'CONFIRMED' && row.txHash) continue;
       const chainId = txReq.chainId ?? quote.fromChainId;
       const chain = viemChain(chainId);
-      const walletClient = createWalletClient({ account, chain, transport: http(chain.rpcUrls.default.http[0]!) });
+      const walletClient = signer.walletClient(chain, chain.rpcUrls.default.http[0]!);
       const hash = await walletClient.sendTransaction({
-        account,
+        account: walletClient.account!,
         to: txReq.to,
         data: txReq.data as Hex,
         value: BigInt(txReq.value),
+        chain,
         chainId,
       });
       finalHash = hash;

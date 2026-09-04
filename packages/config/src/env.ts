@@ -52,6 +52,12 @@ const EnvSchema = z.object({
   // Comma-separated destination allowlist. Empty preserves the legacy single
   // destination setting above. Example: 137,42161,8453
   PAYMESH_DEST_CHAIN_IDS: z.string().default(''),
+  // Simulates the best candidate's first transaction (`eth_call`) before a
+  // quote is returned (PRD §simulate before you commit).
+  SIMULATE_QUOTES: z.preprocess(
+    (value) => typeof value === 'string' ? value.toLowerCase() === 'true' : value,
+    z.boolean(),
+  ).default(true),
   PAYMESH_DEX_ADDRESS: z.string().default(''),
   PAYMESH_BRIDGE_ADDRESS: z.string().default(''),
   PAYMESH_DEST_BRIDGE_ADDRESS: z.string().default(''),
@@ -80,6 +86,16 @@ const EnvSchema = z.object({
   PAYMESH_BASE_MAINNET_UNISWAP_V3_QUOTER_ADDRESS: z.string().default('0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a'),
   PAYMESH_POLYGON_MAINNET_UNISWAP_V3_ROUTER_ADDRESS: z.string().default('0xE592427A0AEce92De3Edee1F18E0157C05861564'),
   PAYMESH_POLYGON_MAINNET_UNISWAP_V3_QUOTER_ADDRESS: z.string().default('0x61fFE014bA17989E743c5F6cB21bF9697530B21e'),
+  // Arbitrum and Optimism share Uniswap Labs' canonical SwapRouter (v1) +
+  // QuoterV2 addresses with Ethereum/Polygon (verified against
+  // developers.uniswap.org/docs/protocols/v3/deployments, Sept 2026).
+  // Avalanche and Monad only have SwapRouter02 deployed (a different ABI
+  // than this codebase's adapter expects), and Linea has no official
+  // Uniswap v3 deployment at all — none of those three get a default here.
+  PAYMESH_ARBITRUM_MAINNET_UNISWAP_V3_ROUTER_ADDRESS: z.string().default('0xE592427A0AEce92De3Edee1F18E0157C05861564'),
+  PAYMESH_ARBITRUM_MAINNET_UNISWAP_V3_QUOTER_ADDRESS: z.string().default('0x61fFE014bA17989E743c5F6cB21bF9697530B21e'),
+  PAYMESH_OPTIMISM_MAINNET_UNISWAP_V3_ROUTER_ADDRESS: z.string().default('0xE592427A0AEce92De3Edee1F18E0157C05861564'),
+  PAYMESH_OPTIMISM_MAINNET_UNISWAP_V3_QUOTER_ADDRESS: z.string().default('0x61fFE014bA17989E743c5F6cB21bF9697530B21e'),
   CCTP_ENABLED: z.preprocess(
     (value) => typeof value === 'string' ? value.toLowerCase() === 'true' : value,
     z.boolean(),
@@ -93,6 +109,21 @@ const EnvSchema = z.object({
   CCTP_ETHEREUM_MAINNET_MESSAGE_TRANSMITTER_ADDRESS: z.string().default('0x81D40F21F12A8F0E3252Bccb954D722d4c464B64'),
   CCTP_BASE_MAINNET_MESSAGE_TRANSMITTER_ADDRESS: z.string().default('0x81D40F21F12A8F0E3252Bccb954D722d4c464B64'),
   CCTP_POLYGON_MAINNET_MESSAGE_TRANSMITTER_ADDRESS: z.string().default('0x81D40F21F12A8F0E3252Bccb954D722d4c464B64'),
+  // CCTP V2 deploys TokenMessengerV2/MessageTransmitterV2 at the same address
+  // on every supported EVM chain (verified against
+  // developers.circle.com/cctp/references/contract-addresses, Sept 2026).
+  // Native USDC bridging works on these chains even where a Uniswap V3 swap
+  // leg is not available (Avalanche, Monad) or unverified (Linea).
+  CCTP_ARBITRUM_MAINNET_TOKEN_MESSENGER_ADDRESS: z.string().default('0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d'),
+  CCTP_ARBITRUM_MAINNET_MESSAGE_TRANSMITTER_ADDRESS: z.string().default('0x81D40F21F12A8F0E3252Bccb954D722d4c464B64'),
+  CCTP_OPTIMISM_MAINNET_TOKEN_MESSENGER_ADDRESS: z.string().default('0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d'),
+  CCTP_OPTIMISM_MAINNET_MESSAGE_TRANSMITTER_ADDRESS: z.string().default('0x81D40F21F12A8F0E3252Bccb954D722d4c464B64'),
+  CCTP_AVALANCHE_MAINNET_TOKEN_MESSENGER_ADDRESS: z.string().default('0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d'),
+  CCTP_AVALANCHE_MAINNET_MESSAGE_TRANSMITTER_ADDRESS: z.string().default('0x81D40F21F12A8F0E3252Bccb954D722d4c464B64'),
+  CCTP_LINEA_MAINNET_TOKEN_MESSENGER_ADDRESS: z.string().default('0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d'),
+  CCTP_LINEA_MAINNET_MESSAGE_TRANSMITTER_ADDRESS: z.string().default('0x81D40F21F12A8F0E3252Bccb954D722d4c464B64'),
+  CCTP_MONAD_MAINNET_TOKEN_MESSENGER_ADDRESS: z.string().default('0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d'),
+  CCTP_MONAD_MAINNET_MESSAGE_TRANSMITTER_ADDRESS: z.string().default('0x81D40F21F12A8F0E3252Bccb954D722d4c464B64'),
   CCTP_IRIS_API_URL: z.string().default('https://iris-api-sandbox.circle.com'),
   CCTP_MAX_FEE: z.coerce.bigint().default(0n),
   CCTP_MIN_FINALITY_THRESHOLD: z.coerce.number().default(2000),

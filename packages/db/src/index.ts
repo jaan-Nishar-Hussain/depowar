@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 export { PrismaClient, Prisma } from '@prisma/client';
 
-export { hashApiKey } from './api-key';
+export { hashApiKey, verifyApiKeyHash } from './api-key';
 
 /** Generates a human-prefixed id, e.g. `dep_...` / `qt_...` / `tx_...`. */
 export function generateId(prefix: string): string {

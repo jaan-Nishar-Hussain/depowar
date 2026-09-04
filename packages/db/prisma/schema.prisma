@@ -169,6 +169,16 @@ model Quote {
   hopTransactionRequests Json
   status             String        @default("ACTIVE") // ACTIVE | EXPIRED | USED | REJECTED
   expiresAt          DateTime
+  providerId         String? // adapterId of the winning route (routing KPIs)
+  simulated          Boolean       @default(false)
+  fallbackFromQuoteId String? // set when this quote was produced by a fallback
+  fallbackFromHop    Int?
+  /// Ranking penalty score from rankRoutes (lower = better route). Persisted
+  /// for post-hoc route-decision analysis (Next-Gen Routing PRD §Monitoring).
+  score              Float?
+  /// Snapshot of the losing candidates' summary metrics at quote time, so a
+  /// historical quote can be audited against the routes it was not chosen over.
+  alternatesSnapshot Json?
   createdAt          DateTime      @default(now())
   transactions       Transaction[]
 }
@@ -187,6 +197,7 @@ model Transaction {
   errorCode       String?
   submittedAt     DateTime?
   confirmedAt     DateTime?
+  settledAt       DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 }
@@ -221,6 +232,10 @@ model AuditLog {
   entityType String?
   entityId   String?
   details    Json?
+  /// Requester IP and user agent, captured from request context (Next-Gen
+  /// Routing PRD §Security: "Include IP, user agent").
+  ip         String?
+  userAgent  String?
   createdAt  DateTime @default(now())
 }
 

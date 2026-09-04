@@ -56,6 +56,12 @@ export interface CandidateRoute {
   transactionRequest?: TransactionRequest;
   /** One signable transaction per hop, in route order. */
   hopTransactionRequests?: TransactionRequest[];
+  /**
+   * Weighted ranking penalty from `rankRoutes` (lower is better; 0 is the
+   * best candidate in the set it was ranked against). Set by `rankRoutes`;
+   * absent on candidates that were never scored (e.g. discarded pre-ranking).
+   */
+  score?: number;
 }
 
 export interface Quote extends CandidateRoute {

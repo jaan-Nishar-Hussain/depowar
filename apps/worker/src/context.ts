@@ -1,6 +1,7 @@
 import { PrismaClient } from '@paymesh/db';
 import { Queue } from 'bullmq';
 import { AppEnv } from '@paymesh/config';
+import { createInMemoryRoutingMetrics, type RoutingMetricsSink } from '@paymesh/routing-engine';
 import { createEventQueue, QUEUE_FALLBACK_ROUTE, QUEUE_TX_MONITOR } from './queues';
 import type { LifecycleEventType } from './types';
 
@@ -8,6 +9,8 @@ export interface WorkerContext {
   env: AppEnv;
   prisma: PrismaClient;
   eventQueue: Queue;
+  /** Process-wide routing KPIs shared with the queue consumers (PRD §Monitoring). */
+  routingMetrics: RoutingMetricsSink;
 }
 
 export async function emitEvent(
@@ -65,5 +68,5 @@ export async function enqueueMonitor(
 }
 
 export function createWorkerContext(env: AppEnv, prisma: PrismaClient): WorkerContext {
-  return { env, prisma, eventQueue: createEventQueue(env) };
+  return { env, prisma, eventQueue: createEventQueue(env), routingMetrics: createInMemoryRoutingMetrics() };
 }

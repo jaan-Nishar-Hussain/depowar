@@ -18,6 +18,12 @@ export interface GetQuoteDeps {
   metrics?: RoutingMetricsSink;
   /** Maximum adapter legs for composed route-graph paths. */
   maxHops?: number;
+  /**
+   * Optional stateless simulation callback (`eth_call`). When provided, the
+   * best route's first signable transaction is simulated before the quote is
+   * returned; failing candidates are skipped in favor of the next-best.
+   */
+  simulateTx?: (tx: TransactionRequest) => Promise<unknown>;
 }
 
 function directCandidate(req: QuoteRequest): CandidateRoute {
@@ -242,59 +248,81 @@ export async function getQuote(
   const slippage = effectiveSlippage(req);
   const candidates: CandidateRoute[] = [];
 
-  for (const provider of deps.routeProviders ?? []) {
-    try {
-      const fromProvider = await provider.getCandidateRoutes(req);
-      candidates.push(...fromProvider.filter((candidate) => candidate.available !== false));
-    } catch {
-      // One provider outage must not prevent other routes from being quoted.
-    }
+  // Provider federation: query every external route provider in parallel. One
+  // provider outage must not delay or prevent the others (PRD §fan-out).
+  const providerResults = await Promise.all(
+    (deps.routeProviders ?? []).map(async (provider) => {
+      try {
+        return await provider.getCandidateRoutes(req);
+      } catch {
+        return [] as CandidateRoute[];
+      }
+    }),
+  );
+  for (const routes of providerResults) {
+    candidates.push(...routes.filter((candidate) => candidate.available !== false));
   }
 
   if (req.fromChain === req.toChain) {
     if (req.fromToken === req.toToken) {
       candidates.push(directCandidate(req));
     } else {
-      for (const swap of deps.swapAdapters.filter((a) => a.supportedChains.includes(req.fromChain))) {
-        try {
-          const candidate = await buildSameChainCandidate(req, swap);
-          if (candidate.available !== false) candidates.push(candidate);
-        } catch {
-          // Invalid/unavailable adapter is skipped.
-        }
-      }
+      const swaps = deps.swapAdapters.filter((a) => a.supportedChains.includes(req.fromChain));
+      // Same-chain swaps are independent: quote them in parallel.
+      const sameChainResults = await Promise.all(
+        swaps.map(async (swap) => {
+          try {
+            const candidate = await buildSameChainCandidate(req, swap);
+            return candidate.available !== false ? candidate : null;
+          } catch {
+            return null; // Invalid/unavailable adapter is skipped.
+          }
+        }),
+      );
+      candidates.push(...sameChainResults.filter((candidate): candidate is CandidateRoute => candidate !== null));
     }
   } else {
     const bridges = deps.bridgeAdapters.filter(
       (a) => a.supportedFromChains.includes(req.fromChain) && a.supportedToChains.includes(req.toChain),
     );
-    for (const bridge of bridges) {
-      if (bridge.healthCheck) {
-        try {
-          const health = await bridge.healthCheck();
-          if (!health.available) continue;
-        } catch {
-          continue;
+    const eligibleBridges = await Promise.all(
+      bridges.map(async (bridge) => {
+        if (bridge.healthCheck) {
+          try {
+            const health = await bridge.healthCheck();
+            return health.available ? bridge : null;
+          } catch {
+            return null;
+          }
         }
-      }
-      const swaps = deps.swapAdapters.filter((a) => a.supportedChains.includes(req.fromChain));
-      // Evaluate every compatible swap × bridge combination. A bridge may
-      // carry the source token directly, otherwise a swap is required.
+        return bridge;
+      }),
+    );
+    const swaps = deps.swapAdapters.filter((a) => a.supportedChains.includes(req.fromChain));
+    // Evaluate every compatible swap × bridge combination in parallel. A
+    // bridge may carry the source token directly, otherwise a swap is required.
+    const combos: Array<{ bridge: typeof bridges[number]; swap: SwapAdapter | undefined }> = [];
+    for (const bridge of eligibleBridges) {
+      if (!bridge) continue;
       const bridgeSourceToken = bridge.sourceTokenFor?.({
         fromChain: req.fromChain,
         toChain: req.toChain,
         tokenOut: req.toToken,
       }) ?? req.toToken;
       const compatibleSwaps = req.fromToken === bridgeSourceToken ? [undefined] : swaps;
-      for (const swapAdapter of compatibleSwaps) {
-        try {
-          const candidate = await buildCrossChainCandidate(req, bridge, swapAdapter);
-          if (candidate.available !== false) candidates.push(candidate);
-        } catch {
-          // Continue evaluating other providers.
-        }
-      }
+      for (const swapAdapter of compatibleSwaps) combos.push({ bridge, swap: swapAdapter });
     }
+    const crossChainResults = await Promise.all(
+      combos.map(async ({ bridge, swap }) => {
+        try {
+          const candidate = await buildCrossChainCandidate(req, bridge, swap);
+          return candidate.available !== false ? candidate : null;
+        } catch {
+          return null; // Continue evaluating other providers.
+        }
+      }),
+    );
+    candidates.push(...crossChainResults.filter((candidate): candidate is CandidateRoute => candidate !== null));
   }
 
   // Route-graph composition (PRD §Route Graph): explores multi-leg paths the
@@ -323,7 +351,27 @@ export async function getQuote(
   }
 
   const quoteStartedAt = Date.now();
-  const ranked = rankRoutes(candidates, req, deps.weights, deps.telemetry);
+  let ranked = rankRoutes(candidates, req, deps.weights, deps.telemetry);
+
+  // Simulation (PRD §simulate before you commit): when a stateless `eth_call`
+  // callback is provided, try candidates in rank order and skip any whose
+  // first signable transaction reverts.
+  if (deps.simulateTx) {
+    const executable: CandidateRoute[] = [];
+    for (const candidate of ranked) {
+      if (candidate.transactionRequest) {
+        try {
+          await deps.simulateTx(candidate.transactionRequest);
+        } catch (error) {
+          deps.metrics?.recordRouteDiscarded((error as Error).message ?? 'simulation failed');
+          continue;
+        }
+      }
+      executable.push(candidate);
+    }
+    ranked = executable;
+  }
+
   const bestRoute = ranked[0];
   if (!bestRoute) {
     deps.metrics?.recordQuoteLatency(Date.now() - quoteStartedAt, 'route_not_found');

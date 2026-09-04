@@ -1,5 +1,5 @@
-import { createPublicClient, http, type Address, type Chain } from 'viem';
-import { ccipRouterConfigs, type AppEnv } from '@paymesh/config';
+import { createPublicClient, http, type Address, type Chain, type PublicClient } from 'viem';
+import { type AppEnv } from '@paymesh/config';
 import { createMockDexAdapter } from './adapters/dex/mockDexAdapter';
 import { createMockBridgeAdapter } from './adapters/bridge/mockBridgeAdapter';
 import { createV2DexAdapter } from './adapters/dex/v2DexAdapter';
@@ -9,6 +9,7 @@ import { createCctpAdapter } from './adapters/bridge/cctpAdapter';
 import { createAcrossAdapter } from './adapters/bridge/acrossAdapter';
 import { createCcipAdapter } from './adapters/bridge/ccipAdapter';
 import type { GetQuoteDeps } from './getQuote';
+import type { BridgeAdapter, SwapAdapter } from './adapters/types';
 
 export interface AdapterConfig {
   rpcUrl: string;
@@ -32,7 +33,70 @@ export interface AdapterConfig {
   env?: AppEnv;
 }
 
-const MAINNET_CHAIN_IDS = new Set([1, 8453, 42161, 10, 137, 43114, 56, 59144]);
+export const MAINNET_CHAIN_IDS = new Set([1, 8453, 42161, 10, 137, 43114, 56, 59144]);
+
+/**
+ * Federated swap-adapter builder (single source of truth for the API and the
+ * worker). 1inch is added when enabled and an API key is present.
+ */
+export function createFederatedSwapAdapters(env: AppEnv | undefined, timeoutMs = 8_000): SwapAdapter[] {
+  if (!env?.ONEINCH_ENABLED || !env.ONEINCH_API_KEY) return [];
+  return [createOneInchAdapter({
+    baseUrl: env.ONEINCH_API_URL,
+    apiKey: env.ONEINCH_API_KEY,
+    routerAddress: env.ONEINCH_ROUTER_ADDRESS as Address,
+    chains: [...MAINNET_CHAIN_IDS],
+    timeoutMs,
+  })];
+}
+
+/**
+ * Federated bridge-adapter builder. Across is mainnet-only and inert on
+ * testnets; CCIP is a disabled-by-default backup rail. `sourceChainId` /
+ * `destChainId` gate which providers apply to the current pair.
+ */
+export function createFederatedBridgeAdapters(
+  env: AppEnv | undefined,
+  sourceChainId: number,
+  destChainId: number,
+  publicClient: PublicClient,
+  destinationUsdc?: string,
+  sourceUsdc?: string,
+  timeoutMs = 8_000,
+): BridgeAdapter[] {
+  const adapters: BridgeAdapter[] = [];
+  if (env?.ACROSS_ENABLED && MAINNET_CHAIN_IDS.has(sourceChainId) && MAINNET_CHAIN_IDS.has(destChainId)) {
+    adapters.push(createAcrossAdapter({
+      enabled: true,
+      baseUrl: env.ACROSS_API_URL,
+      integratorId: env.ACROSS_INTEGRATOR_ID || undefined,
+      apiKey: env.ACROSS_API_KEY || undefined,
+      timeoutMs,
+    }));
+  }
+  if (env?.CCIP_ENABLED) {
+    for (const entry of env.CCIP_ROUTERS.split(',').map((value) => value.split(':').map((part) => part.trim()))) {
+      if (entry.length !== 5 || entry[0] !== String(sourceChainId) || Number(entry[4]) !== destChainId) continue;
+      const tokenEntry = env.CCIP_TOKEN.split(',')
+        .map((part) => part.split(':').map((value) => value.trim()))
+        .find((part) => part[0] === String(sourceChainId));
+      const token = tokenEntry?.[1] ?? sourceUsdc;
+      if (!token) continue;
+      adapters.push(createCcipAdapter({
+        publicClient,
+        routerAddress: entry[1] as Address,
+        sourceChainSelector: BigInt(entry[2]!),
+        destinationChainSelector: BigInt(entry[3]!),
+        sourceChainId,
+        destinationChainId: destChainId,
+        token: token as Address,
+        destinationToken: (destinationUsdc ?? token) as Address,
+        enabled: true,
+      }));
+    }
+  }
+  return adapters;
+}
 
 /**
  * Builds an env-driven adapter set. A configured Uniswap V3 deployment is
@@ -71,16 +135,7 @@ export function createDefaultAdapters(config: AdapterConfig): GetQuoteDeps {
               chains: [config.sourceChainId],
             })
           : undefined].filter((adapter): adapter is NonNullable<typeof adapter> => !!adapter);
-
-  // Tier-2 federated DEX aggregator (PRD). Only when enabled and configured.
-  if (env?.ONEINCH_ENABLED && env.ONEINCH_API_KEY) {
-    swapAdapterList.push(createOneInchAdapter({
-      baseUrl: env.ONEINCH_API_URL,
-      apiKey: env.ONEINCH_API_KEY,
-      routerAddress: env.ONEINCH_ROUTER_ADDRESS as Address,
-      chains: [...MAINNET_CHAIN_IDS],
-    }));
-  }
+  swapAdapterList.push(...createFederatedSwapAdapters(env));
 
   const bridgeAdapterList = config.cctpEnabled !== false && config.cctpTokenMessenger && config.sourceUsdc && config.destinationUsdc
       ? [createCctpAdapter({
@@ -102,40 +157,14 @@ export function createDefaultAdapters(config: AdapterConfig): GetQuoteDeps {
             supportedFromChains: [config.sourceChainId],
           }),
         ] : [];
-
-  // Tier-1 intent bridge (PRD): mainnet-only, explicitly enabled.
-  if (env?.ACROSS_ENABLED && MAINNET_CHAIN_IDS.has(config.sourceChainId) && MAINNET_CHAIN_IDS.has(config.destChainId)) {
-    bridgeAdapterList.push(createAcrossAdapter({
-      enabled: true,
-      baseUrl: env.ACROSS_API_URL,
-      integratorId: env.ACROSS_INTEGRATOR_ID || undefined,
-      apiKey: env.ACROSS_API_KEY || undefined,
-    }));
-  }
-
-  // Backup rail (PRD Tier-3): CCIP, disabled unless explicitly configured.
-  // CCIP_ROUTERS entries: "<chainId>:<router>:<sourceSelector>:<destSelector>:<destChainId>".
-  if (env?.CCIP_ENABLED) {
-    for (const entry of env.CCIP_ROUTERS.split(',').map((value) => value.split(':').map((part) => part.trim()))) {
-      if (entry.length !== 5 || entry[0] !== String(config.sourceChainId)) continue;
-      const tokenEntry = env.CCIP_TOKEN.split(',')
-        .map((part) => part.split(':').map((value) => value.trim()))
-        .find((part) => part[0] === String(config.sourceChainId));
-      const token = tokenEntry?.[1] ?? config.sourceUsdc;
-      if (!token) continue;
-      bridgeAdapterList.push(createCcipAdapter({
-        publicClient,
-        routerAddress: entry[1] as Address,
-        sourceChainSelector: BigInt(entry[2]!),
-        destinationChainSelector: BigInt(entry[3]!),
-        sourceChainId: config.sourceChainId,
-        destinationChainId: Number(entry[4]),
-        token: token as Address,
-        destinationToken: (config.destinationUsdc ?? token) as Address,
-        enabled: true,
-      }));
-    }
-  }
+  bridgeAdapterList.push(...createFederatedBridgeAdapters(
+    env,
+    config.sourceChainId,
+    config.destChainId,
+    publicClient,
+    config.destinationUsdc,
+    config.sourceUsdc,
+  ));
 
   return {
     swapAdapters: swapAdapterList,

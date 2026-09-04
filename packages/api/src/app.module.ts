@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { loadEnv } from '@paymesh/config';
 import { EnvModule } from './env/env.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { ApiKeyGuard } from './auth/api-key.guard';
+import { ApiKeyThrottlerGuard } from './auth/api-key-throttler.guard';
 import { ScreeningModule } from './screening/screening.module';
 import { AuditModule } from './audit/audit.module';
 import { QueueModule } from './queue/queue.module';
@@ -53,8 +54,10 @@ import { ENV } from './common/tokens';
   ],
   controllers: [HealthController],
   providers: [
+    // Order matters: ApiKeyGuard runs first and attaches request.client, so
+    // ApiKeyThrottlerGuard can rate-limit per API key instead of per IP.
     { provide: APP_GUARD, useClass: ApiKeyGuard },
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: ApiKeyThrottlerGuard },
   ],
 })
 export class AppModule {}

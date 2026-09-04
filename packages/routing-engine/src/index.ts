@@ -23,3 +23,4 @@ export * from './adapters/bridge/ccipAdapter';
 export * from './adapters/http/routeApiAdapter';
 export * from './adapters/http/lifiRouteProvider';
 export * from './factory';
+export * from './signer';

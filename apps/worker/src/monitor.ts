@@ -1,7 +1,6 @@
 import { Job } from 'bullmq';
-import { createPublicClient, createWalletClient, http, isAddress, parseEventLogs, type Address, type Hex, type Log } from 'viem';
-import { privateKeyToAccount } from 'viem/accounts';
-import { cctpDomain, cctpMessageTransmitter, cctpTokenMessenger, getChain, getToken, MIN_CONFIRMATIONS, QUOTE_TTL_SECONDS } from '@paymesh/config';
+import { createPublicClient, http, isAddress, parseEventLogs, type Address, type Hex, type Log } from 'viem';
+import { cctpDomain, cctpMessageTransmitter, cctpTokenMessenger, getChain, getToken, mainnetUniswap, MIN_CONFIRMATIONS, QUOTE_TTL_SECONDS } from '@paymesh/config';
 import { generateId } from '@paymesh/db';
 import { readArtifact } from '@paymesh/contracts';
 import {
@@ -10,6 +9,7 @@ import {
   createDefaultAdapters,
   createRouteApiAdapter,
   createLifiRouteProvider,
+  createPrivateKeySigner,
   type QuoteRequest,
 } from '@paymesh/routing-engine';
 import { WorkerContext, emitEvent, enqueueFallback } from './context';
@@ -155,6 +155,10 @@ export async function processTxMonitor(job: Job<MonitorJobData>, ctx: WorkerCont
     where: { id: transaction.depositIntentId },
     data: { status: 'SETTLED' },
   });
+  await ctx.prisma.transaction.update({
+    where: { id: transaction.id },
+    data: { status: 'CONFIRMED', confirmedAt: new Date(), settledAt: new Date() },
+  });
   await emitEvent(ctx, {
     clientId: transaction.quote.depositIntent.clientId,
     type: 'deposit.settled',
@@ -217,7 +221,7 @@ async function settleCctp(
   const destinationInfo = getChain(destinationChain);
   const relayerKey = ctx.env.RELAYER_PRIVATE_KEY as Hex;
   if (!relayerKey) throw new Error('RELAYER_PRIVATE_KEY is required for CCTP destination settlement');
-  const account = privateKeyToAccount(relayerKey);
+  const signer = createPrivateKeySigner(relayerKey);
   const destinationClient = createPublicClient({
     chain: viemChain(destinationChain),
     transport: http(destinationInfo.rpcUrl),
@@ -225,19 +229,16 @@ async function settleCctp(
   // Use the pending nonce so queued/in-flight relayer transactions are
   // included. This avoids reusing a nonce that was already broadcast.
   const nonce = await destinationClient.getTransactionCount({
-    address: account.address,
+    address: signer.address,
     blockTag: 'pending',
   });
-  const walletClient = createWalletClient({
-    account,
-    chain: viemChain(destinationChain),
-    transport: http(destinationInfo.rpcUrl),
-  });
+  const walletClient = signer.walletClient(viemChain(destinationChain), destinationInfo.rpcUrl);
   const settleHash = await walletClient.writeContract({
     address: transmitter,
     abi: CCTP_MESSAGE_TRANSMITTER_V2_ABI,
     functionName: 'receiveMessage',
     args: [message, attestation],
+    account: walletClient.account!,
     chain: viemChain(destinationChain),
     nonce,
   });
@@ -308,16 +309,13 @@ async function settleBridge(
     throw new Error('PAYMESH_BRIDGE_ADDRESS not configured for settlement');
   }
 
-  const walletClient = createWalletClient({
-    account: privateKeyToAccount(relayerKey),
-    chain: viemChain(hop.toChain ?? 0),
-    transport: http(destChain.rpcUrl),
-  });
+  const walletClient = createPrivateKeySigner(relayerKey).walletClient(viemChain(hop.toChain ?? 0), destChain.rpcUrl);
   const amount = BigInt(String(hop.amountOut ?? 0n));
   const settleHash = await walletClient.writeContract({
     address: destBridgeAddress,
     abi: BRIDGE_ABI,
     functionName: 'settle',
+    account: walletClient.account!,
     args: [
       transferId,
       (hop.toToken ?? '0x0000000000000000000000000000000000000000') as Address,
@@ -481,13 +479,11 @@ export async function processFallback(
       timeoutMs: ctx.env.ROUTE_PROVIDER_TIMEOUT_MS,
     }));
   }
-  const mainnetSwap = routeQuote.fromChainId === 1
-    ? { router: ctx.env.PAYMESH_ETHEREUM_MAINNET_UNISWAP_V3_ROUTER_ADDRESS, quoter: ctx.env.PAYMESH_ETHEREUM_MAINNET_UNISWAP_V3_QUOTER_ADDRESS }
-    : routeQuote.fromChainId === 8453
-      ? { router: ctx.env.PAYMESH_BASE_MAINNET_UNISWAP_V3_ROUTER_ADDRESS, quoter: ctx.env.PAYMESH_BASE_MAINNET_UNISWAP_V3_QUOTER_ADDRESS }
-      : routeQuote.fromChainId === 137
-        ? { router: ctx.env.PAYMESH_POLYGON_MAINNET_UNISWAP_V3_ROUTER_ADDRESS, quoter: ctx.env.PAYMESH_POLYGON_MAINNET_UNISWAP_V3_QUOTER_ADDRESS }
-        : { router: '', quoter: '' };
+  // Delegates to the shared config helper (single source of truth with the
+  // API's routing provider) instead of duplicating a per-chain ternary here.
+  const mainnetSwap = routeQuote.fromChainId === 11155111 || routeQuote.fromChainId === 84532
+    ? { router: '', quoter: '' }
+    : mainnetUniswap(routeQuote.fromChainId);
   const routerConfigured = routeQuote.fromChainId === 11155111
     ? !!ctx.env.PAYMESH_SEPOLIA_DEX_ROUTER_ADDRESS ||
       (!!ctx.env.PAYMESH_SEPOLIA_UNISWAP_V3_ROUTER_ADDRESS && !!ctx.env.PAYMESH_SEPOLIA_UNISWAP_V3_QUOTER_ADDRESS)
@@ -562,16 +558,17 @@ export async function processFallback(
 
   let result;
   try {
+    const fallbackDeps = { ...adapters, routeProviders, metrics: ctx.routingMetrics };
     result = midRoute
       ? await getFallbackQuoteFromHop(
           request,
-          { ...adapters, routeProviders },
+          fallbackDeps,
           failedAdapterId ? [failedAdapterId] : [],
           midRoute,
         )
       : await getFallbackQuote(
           request,
-          { ...adapters, routeProviders },
+          fallbackDeps,
           failedAdapterId ? [failedAdapterId] : [],
         );
   } catch (error) {
@@ -606,6 +603,12 @@ export async function processFallback(
         hopTransactionRequests: stringifyBigInts(best.hopTransactionRequests ?? []) as object,
         status: 'ACTIVE',
         expiresAt,
+        // Provider KPI columns (PRD §Monitoring).
+        providerId: best.adapterId ?? null,
+        simulated: false,
+        ...(midRoute
+          ? { fallbackFromQuoteId: quoteId, fallbackFromHop: midRoute.completedHops }
+          : {}),
       },
     });
     for (let i = 0; i < best.route.length; i++) {

@@ -51,7 +51,10 @@ export function rankRoutes(
   });
 
   scored.sort((a, b) => a.score - b.score);
-  return scored.map((s) => s.route);
+  // Attach the computed score to a shallow copy so callers get it without
+  // rankRoutes mutating the candidates passed in (PRD §Monitoring: routes
+  // chosen/discarded need a persistable score for post-hoc analysis).
+  return scored.map((s) => ({ ...s.route, score: s.score }));
 }
 
 function clamp(value: number): number {

@@ -10,9 +10,9 @@ import {
   createCctpAdapter,
   createRouteApiAdapter,
   createLifiRouteProvider,
-  createOneInchAdapter,
-  createAcrossAdapter,
-  createCcipAdapter,
+  createFederatedSwapAdapters,
+  createFederatedBridgeAdapters,
+  getSharedTelemetryStore,
   RouteHandler,
   type Quote as EngineQuote,
   type QuoteRequest,
@@ -20,8 +20,6 @@ import {
 import { ENV } from '../common/tokens';
 import { viemChain } from '../common/chains';
 import type { RoutingMetricsService } from '../metrics/routing-metrics.service';
-
-const MAINNET_CHAIN_IDS = new Set([1, 8453, 42161, 10, 137, 43114, 56, 59144]);
 
 export interface RoutingQuoteResult {
   best: EngineQuote;
@@ -145,56 +143,44 @@ export class DefaultRoutingProvider implements RoutingProvider {
       }));
     }
 
-    // Federated provider additions (PRD §Priority Provider List). Each new
-    // provider is optional and ranked together with the built-in adapters.
-    if (this.env.ONEINCH_ENABLED && this.env.ONEINCH_API_KEY) {
-      swapAdapters.push(createOneInchAdapter({
-        baseUrl: this.env.ONEINCH_API_URL,
-        apiKey: this.env.ONEINCH_API_KEY,
-        routerAddress: this.env.ONEINCH_ROUTER_ADDRESS as Address,
-        chains: [...MAINNET_CHAIN_IDS],
-        timeoutMs: this.env.ROUTE_PROVIDER_TIMEOUT_MS,
-      }));
-    }
-    const mainnetPair = MAINNET_CHAIN_IDS.has(req.fromChain) && MAINNET_CHAIN_IDS.has(req.toChain);
-    if (this.env.ACROSS_ENABLED && mainnetPair) {
-      bridgeAdapters.push(createAcrossAdapter({
-        enabled: true,
-        baseUrl: this.env.ACROSS_API_URL,
-        integratorId: this.env.ACROSS_INTEGRATOR_ID || undefined,
-        apiKey: this.env.ACROSS_API_KEY || undefined,
-        timeoutMs: this.env.ROUTE_PROVIDER_TIMEOUT_MS,
-      }));
-    }
-    if (this.env.CCIP_ENABLED) {
-      for (const entry of this.env.CCIP_ROUTERS.split(',').map((value) => value.split(':').map((part) => part.trim()))) {
-        if (entry.length !== 5 || entry[0] !== String(req.fromChain) || Number(entry[4]) !== req.toChain) continue;
-        const tokenEntry = this.env.CCIP_TOKEN.split(',')
-          .map((part) => part.split(':').map((value) => value.trim()))
-          .find((part) => part[0] === String(req.fromChain));
-        const token = tokenEntry?.[1] ?? sourceUsdc;
-        if (!token) continue;
-        bridgeAdapters.push(createCcipAdapter({
-          publicClient,
-          routerAddress: entry[1] as Address,
-          sourceChainSelector: BigInt(entry[2]!),
-          destinationChainSelector: BigInt(entry[3]!),
-          sourceChainId: req.fromChain,
-          destinationChainId: req.toChain,
-          token: token as Address,
-          destinationToken: (destinationUsdc ?? token) as Address,
-          enabled: true,
-        }));
-      }
-    }
+    // Federated provider additions (PRD §Priority Provider List), from the
+    // shared factory so the API and the worker stay on one code path.
+    swapAdapters.push(...createFederatedSwapAdapters(this.env, this.env.ROUTE_PROVIDER_TIMEOUT_MS));
+    bridgeAdapters.push(...createFederatedBridgeAdapters(
+      this.env,
+      req.fromChain,
+      req.toChain,
+      publicClient,
+      destinationUsdc ?? undefined,
+      sourceUsdc ?? undefined,
+      this.env.ROUTE_PROVIDER_TIMEOUT_MS,
+    ));
 
     const handler = new RouteHandler({
       dependencies: {
         swapAdapters,
         bridgeAdapters,
         routeProviders: externalProviders,
+        telemetry: getSharedTelemetryStore().snapshot(),
         metrics: this.metrics?.metrics,
+        ...(this.env.SIMULATE_QUOTES
+          ? { simulateTx: async (tx) => {
+              // Stateless `eth_call` pre-flight of the first signable hop.
+              const txChain = tx.chainId ?? req.fromChain;
+              const client = createPublicClient({
+                chain: viemChain(txChain),
+                transport: http(getChain(txChain).rpcUrl),
+              });
+              await client.call({
+                to: tx.to,
+                data: tx.data,
+                value: tx.value,
+                ...(tx.from ? { account: tx.from } : {}),
+              });
+            } }
+          : {}),
       },
+      trackTelemetry: true,
     });
     const { best, alternates } = await handler.findBestRoute(req);
 

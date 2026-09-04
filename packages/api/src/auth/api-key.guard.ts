@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
-import { hashApiKey } from '@paymesh/db';
+import { verifyApiKeyHash } from '@paymesh/db';
 import { PrismaService } from '../prisma/prisma.service';
 import { IS_PUBLIC_KEY, SCOPES_KEY, ClientContext } from './decorators';
 import { PayMeshError } from '../common/errors';
@@ -57,13 +57,20 @@ export class ApiKeyGuard implements CanActivate {
       );
     }
 
-    const record = await this.prisma.apiKey.findUnique({
-      where: { keyHash: hashApiKey(key) },
-      include: { client: true },
-    });
+    const prefix = key.startsWith('dw_live_') ? 'dw_live_' : key.startsWith('dw_test_') ? 'dw_test_' : '';
+    let record: Awaited<ReturnType<typeof this.prisma.apiKey.findFirst>> = null;
+    if (prefix) {
+      // Constant-time hash comparison (PRD §Security). Fetch all keys carrying
+      // this prefix and compare each hash with timingSafeEqual so a multi-key
+      // client still resolves the presented key correctly.
+      const candidates = await this.prisma.apiKey.findMany({
+        where: { keyPrefix: prefix, environment: prefix === 'dw_live_' ? 'LIVE' : 'TEST' },
+        include: { client: true },
+      });
+      record = candidates.find((candidate) => verifyApiKeyHash(key, candidate.keyHash)) ?? null;
+    }
 
-    const expectedPrefix = record?.environment === 'LIVE' ? 'dw_live_' : 'dw_test_';
-    if (!record || !key.startsWith(expectedPrefix) || !record.enabled || !!record.revokedAt || (record.expiresAt && record.expiresAt <= new Date())) {
+    if (!record || !record.enabled || !!record.revokedAt || (record.expiresAt && record.expiresAt <= new Date())) {
       throw new UnauthorizedException('Invalid API key');
     }
 

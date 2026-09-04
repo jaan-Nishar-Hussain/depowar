@@ -72,6 +72,20 @@ exposed in Prometheus format at `GET /v1/metrics`. Mid-route failures trigger a
 partial-route fallback that re-quotes from the intermediate (chain, token,
 amount) state so confirmed hops are never double-counted.
 
+### Mainnet preview / canary
+
+`scripts/mainnet-preview.mjs` is the safe-by-default mainnet tool: it quotes
+the best federated route and `eth_call`-simulates the first hop without
+broadcasting anything. Broadcasting real funds requires `APP_ENV=production`
+**and** `--confirm-live` (with a 10-second abort window):
+
+```bash
+node scripts/mainnet-preview.mjs --fromChain 1 --fromToken USDT --fromAmount 10 \
+  --toChain 8453 --toToken USDC --recipient 0xYourWallet
+```
+
+Failure/recovery semantics: see [`docs/stuck-fund-recovery.md`](docs/stuck-fund-recovery.md).
+
 ## Repo layout (Turborepo 2 + pnpm)
 
 ```
