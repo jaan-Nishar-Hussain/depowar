@@ -107,17 +107,21 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
   const [carouselIndex, setCarouselIndex] = useState(0);
   const swipeRef = useRef<HTMLButtonElement>(null);
 
-  const connected = isConnected && !!address && !!chain;
+  const connected = isConnected && !!address;
   const isSigning = status === 'signing';
   const supportedChains = config.supportedSourceChains ?? SUPPORTED_MAINNET_CHAINS;
+  const activeChainId = chain?.id ?? supportedChains[0] ?? 8453;
   const toTokenSymbol = config.toTokenSymbol ?? 'USDC';
   const [chainSearch, setChainSearch] = useState('');
   const [tokenSearch, setTokenSearch] = useState('');
-  const baseSourceToken = config.fromTokenByChain?.[chain?.id ?? 0] ?? config.fromToken ?? 'native';
-  const tokenOptions = config.supportedTokensByChain?.[chain?.id ?? 0]?.filter((token) => token.address) ?? [{ symbol: tokenLabel(baseSourceToken), address: baseSourceToken }];
+  const baseSourceToken = config.fromTokenByChain?.[activeChainId] ?? config.fromToken ?? 'native';
+  const rawTokenOptions = config.supportedTokensByChain?.[activeChainId]?.filter((token) => Boolean(token?.address)) ?? [];
+  const tokenOptions = rawTokenOptions.length > 0
+    ? rawTokenOptions
+    : [{ symbol: tokenLabel(baseSourceToken), address: baseSourceToken }];
   const [selectedToken, setSelectedToken] = useState<string>();
   const sourceToken = selectedToken ?? tokenOptions[0]?.address ?? baseSourceToken;
-  const sourceSymbol = tokenOptions.find((token) => token.address.toLowerCase() === sourceToken.toLowerCase())?.symbol ?? tokenLabel(sourceToken);
+  const sourceSymbol = tokenOptions.find((token) => token.address?.toLowerCase() === sourceToken?.toLowerCase())?.symbol ?? tokenLabel(sourceToken);
   const [chainFilter, setChainFilter] = useState<number | null>(null); // null = All Chains
   const chainQ = chainSearch.trim().toLowerCase();
   const tokenQ = tokenSearch.trim().toLowerCase();
@@ -125,10 +129,10 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
     ? supportedChains.filter((id) => chainLabel(id).toLowerCase().includes(chainQ))
     : supportedChains;
   const tokensForChain = chainFilter !== null
-    ? (config.supportedTokensByChain?.[chainFilter]?.filter(t => t.address) ?? [])
+    ? (config.supportedTokensByChain?.[chainFilter]?.filter(t => Boolean(t?.address)) ?? [])
     : tokenOptions;
   const filteredTokens = tokenQ
-    ? tokensForChain.filter((token) => token.symbol.toLowerCase().includes(tokenQ) || token.address.toLowerCase().includes(tokenQ))
+    ? tokensForChain.filter((token) => token?.symbol?.toLowerCase().includes(tokenQ) || token?.address?.toLowerCase().includes(tokenQ))
     : tokensForChain;
 
   useEffect(() => {
@@ -165,7 +169,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
     setStatus('quoting');
     setError(null);
     try {
-      if (!supportedChains.includes(chain!.id)) {
+      if (!supportedChains.includes(activeChainId)) {
         throw new Error('Connect to a supported network to send this deposit.');
       }
       const srcDecimals = await resolveTokenDecimals(sourceToken);
@@ -180,7 +184,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
       setDepositId(deposit.depositId);
       const result = await sdk.getQuote({
         depositId: deposit.depositId,
-        fromChain: chain!.id,
+        fromChain: activeChainId,
         fromToken: sourceToken,
         fromAmount,
         fromAddress: address,
@@ -192,7 +196,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
       setStatus('failed');
       setError(messageOf(e));
     }
-  }, [connected, sdk, config, chain, address, amount, resolveTokenDecimals]);
+  }, [connected, sdk, config, activeChainId, address, amount, resolveTokenDecimals, supportedChains, sourceToken]);
 
   const resetQuote = useCallback((nextAmount: string) => {
     setAmount(nextAmount);
@@ -218,7 +222,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
       // Sign each hop in order; wait for the previous hop to confirm on-chain
       // before signing the next (the transfer leg needs the swap output).
       for (let i = 0; i < txs.length; i++) {
-        if (txs[i]!.chainId !== undefined && txs[i]!.chainId !== chain!.id) {
+        if (txs[i]!.chainId !== undefined && txs[i]!.chainId !== (chain?.id ?? activeChainId)) {
           throw new Error('Wallet network changed while signing the route. Reconnect to the source network.');
         }
         const hash = await sdk.signAndSend(walletClient, txs[i]);
@@ -295,7 +299,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
         <span className="pm-deposit__title">Deposit</span>
         {connected && (
           <span className="pm-deposit__chain">
-            {chain!.name} · {address!.slice(0, 6)}…{address!.slice(-4)}
+            {(chain?.name ?? chainLabel(activeChainId))} · {address ? `${address.slice(0, 6)}…${address.slice(-4)}` : ''}
           </span>
         )}
       </div>
@@ -352,10 +356,11 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
 
           {/* ── Token Carousel ── */}
           {(() => {
-            const rawTokens = config.supportedTokensByChain?.[chain.id]?.filter(t => t.address) ?? [];
+            const rawTokens = config.supportedTokensByChain?.[activeChainId]?.filter(t => Boolean(t?.address)) ?? [];
             const allTokens = rawTokens.length > 0 ? rawTokens : [{ symbol: sourceSymbol, address: sourceToken }];
             const visibleCount = Math.min(allTokens.length, 4);
-            const activeIdx = allTokens.length > 0 ? carouselIndex % allTokens.length : 0;
+            const tokenIdx = allTokens.findIndex(t => t.address?.toLowerCase() === sourceToken?.toLowerCase());
+            const activeIdx = tokenIdx >= 0 ? tokenIdx : (allTokens.length > 0 ? carouselIndex % allTokens.length : 0);
             // Build a window of up to 4 tokens centred on active
             const startIdx = Math.max(0, Math.min(activeIdx - 1, allTokens.length - visibleCount));
             const visible = allTokens.slice(startIdx, startIdx + visibleCount);
@@ -367,7 +372,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
                     className="pm-carousel__arrow"
                     aria-label="Previous token"
                     onClick={() => {
-                      const prev = (carouselIndex - 1 + allTokens.length) % allTokens.length;
+                      const prev = (activeIdx - 1 + allTokens.length) % allTokens.length;
                       setCarouselIndex(prev);
                       setSelectedToken(allTokens[prev]?.address);
                     }}
@@ -388,7 +393,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
                     className="pm-carousel__arrow"
                     aria-label="Next token"
                     onClick={() => {
-                      const next = (carouselIndex + 1) % allTokens.length;
+                      const next = (activeIdx + 1) % allTokens.length;
                       setCarouselIndex(next);
                       setSelectedToken(allTokens[next]?.address);
                     }}
@@ -413,7 +418,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
                 <div className="pm-carousel__meta">
                   <button type="button" className="pm-carousel__token-label" onClick={() => setSelectorOpen(true)} aria-label="Select chain and token">
                     <strong>{sourceSymbol}</strong>
-                    <span>{chainLabel(chain.id)}</span>
+                    <span>{chainLabel(activeChainId)}</span>
                   </button>
                   <button type="button" className="pm-carousel__chevron" onClick={() => setSelectorOpen(true)} aria-label="Open token selector">&#8964;</button>
                 </div>
@@ -421,7 +426,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
                 {/* Wallet address */}
                 <div className="pm-carousel__address">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3H8L2 7"/></svg>
-                  {address!.slice(0, 6)}…{address!.slice(-4)}
+                  {address ? `${address.slice(0, 6)}…${address.slice(-4)}` : ''}
                 </div>
               </div>
             );
@@ -470,13 +475,13 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
                       onClick={() => setChainFilter(null)}
                     >
                       <span className="pm-all-chains__icon">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                       </span>
                       All Chains
                     </button>
 
                     <div className="pm-selector__section-title">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>
                       Popular chains
                     </div>
 
@@ -487,7 +492,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
                         className={`pm-chain-option ${chainFilter === chainId ? 'pm-chain-option--active' : ''}`}
                         onClick={() => setChainFilter(chainFilter === chainId ? null : chainId)}
                       >
-                        <span className={`pm-chain-option__icon pm-chain-option__icon--${chainId}`}><NetworkIcon chainId={chainId} size={32} /></span>
+                        <span className={`pm-chain-option__icon pm-chain-option__icon--${chainId}`}><NetworkIcon chainId={chainId} size={24} /></span>
                         {chainLabel(chainId)}
                       </button>
                     ))}
@@ -497,36 +502,43 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
                   {/* Right – Tokens */}
                   <div className="pm-selector__tokens">
                     <div className="pm-selector__section-title">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
                       Your tokens
                     </div>
 
                     {filteredTokens.map((token) => {
-                      const displayChainId = chainFilter ?? chain.id;
-                      const isActive = token.address.toLowerCase() === sourceToken.toLowerCase();
+                      const displayChainId = chainFilter ?? activeChainId;
+                      const isActive = Boolean(token?.address && sourceToken && token.address.toLowerCase() === sourceToken.toLowerCase());
                       return (
                         <button
-                          key={token.address}
+                          key={`${displayChainId}-${token.address}`}
                           type="button"
                           className={`pm-token-option ${isActive ? 'pm-token-option--active' : ''}`}
-                          onClick={() => {
-                            if (chainFilter !== null && chainFilter !== chain.id) {
-                              switchChain?.({ chainId: chainFilter });
-                            }
-                            setSelectedToken(token.address);
+                          onClick={async () => {
+                            const targetChainId = chainFilter ?? activeChainId;
+                            const targetTokenAddress = token.address;
+                            setSelectedToken(targetTokenAddress);
                             setSelectorOpen(false);
                             setChainSearch('');
                             setTokenSearch('');
                             setChainFilter(null);
+
+                            if (targetChainId && chain?.id && targetChainId !== chain.id && switchChain) {
+                              try {
+                                await switchChain({ chainId: targetChainId });
+                              } catch (err) {
+                                console.warn('Network switch rejected or not supported:', err);
+                              }
+                            }
                           }}
                         >
                           {/* Stacked icon: token + chain badge */}
                           <span className="pm-token-option__icon-wrap">
                             <span className={`pm-token-option__icon pm-token-option__icon--${token.symbol.toLowerCase()}`}>
-                              <TokenIcon symbol={token.symbol} size={40} />
+                              <TokenIcon symbol={token.symbol} size={32} />
                             </span>
                             <span className="pm-token-option__chain-badge">
-                              <NetworkIcon chainId={displayChainId} size={16} />
+                              <NetworkIcon chainId={displayChainId} size={14} />
                             </span>
                           </span>
                           <span className="pm-token-option__info">
@@ -559,7 +571,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
             <div className="pm-range-labels"><span>$0</span><span>$50</span><span>$100</span><span>$150</span></div>
           </div>
 
-          {(!supportedChains.includes(chain!.id)) && (
+          {(!supportedChains.includes(activeChainId)) && (
             <div className="pm-status pm-status--error">
               Connect to a supported network to send this deposit.
             </div>
@@ -575,7 +587,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
                 onPointerDown={handleSwipe}
                 onClick={() => { if (!swipeOffset) finishSwipe(); }}
                 onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); finishSwipe(); } }}
-                disabled={status === 'quoting' || !amount || !supportedChains.includes(chain!.id)}
+                disabled={status === 'quoting' || !amount || !supportedChains.includes(activeChainId)}
               >
                 <span className="pm-swipe__fill" style={{ width: `calc(50px + ${swipeOffset}px)` }} aria-hidden="true" />
                 <span className="pm-swipe__thumb" style={{ transform: `translateX(${swipeOffset}px)` }}>
@@ -586,7 +598,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                 </span>
               </button>
-              <div className="pm-swipe__route">{sourceSymbol} on {chainLabel(chain.id)} → {config.toTokenSymbol ?? 'USDC'}</div>
+              <div className="pm-swipe__route">{sourceSymbol} on {chainLabel(activeChainId)} → {config.toTokenSymbol ?? 'USDC'}</div>
             </>
           )}
 
@@ -623,7 +635,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                 </span>
               </button>
-              <div className="pm-swipe__route">{sourceSymbol} on {chainLabel(chain.id)} → {config.toTokenSymbol ?? 'USDC'}</div>
+              <div className="pm-swipe__route">{sourceSymbol} on {chainLabel(activeChainId)} → {config.toTokenSymbol ?? 'USDC'}</div>
             </div>
           )}
 

@@ -36,17 +36,17 @@ function DepositConfigCard() {
       },
     supportedTokensByChain: {
       1: [
-        { symbol: 'USDC', address: import.meta.env.VITE_ETHEREUM_MAINNET_USDC ?? '' },
-        { symbol: 'USDT', address: import.meta.env.VITE_ETHEREUM_MAINNET_USDT ?? '' },
-      ].filter((token) => token.address),
+        { symbol: 'USDC', address: import.meta.env.VITE_ETHEREUM_MAINNET_USDC || '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' },
+        { symbol: 'USDT', address: import.meta.env.VITE_ETHEREUM_MAINNET_USDT || '0xdAC17F958D2ee523a2206206994597C13D831ec7' },
+      ],
       8453: [
-        { symbol: 'USDC', address: import.meta.env.VITE_BASE_MAINNET_USDC ?? '' },
-        { symbol: 'USDT', address: import.meta.env.VITE_BASE_MAINNET_USDT ?? '' },
-      ].filter((token) => token.address),
+        { symbol: 'USDC', address: import.meta.env.VITE_BASE_MAINNET_USDC || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' },
+        { symbol: 'USDT', address: import.meta.env.VITE_BASE_MAINNET_USDT || '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2' },
+      ],
       137: [
-        { symbol: 'USDC', address: import.meta.env.VITE_POLYGON_MAINNET_USDC ?? '' },
-        { symbol: 'USDT', address: import.meta.env.VITE_POLYGON_MAINNET_USDT ?? '' },
-      ].filter((token) => token.address),
+        { symbol: 'USDC', address: import.meta.env.VITE_POLYGON_MAINNET_USDC || '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359' },
+        { symbol: 'USDT', address: import.meta.env.VITE_POLYGON_MAINNET_USDT || '0xc2132D05D31c914a87C6611C10748AEb04B58e8F' },
+      ],
       43114: [
         { symbol: 'USDC', address: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E' },
         { symbol: 'USDT', address: '0x9702230A8Ea53601f5cD2dc00fDBC13d4dF4A8c7' },
