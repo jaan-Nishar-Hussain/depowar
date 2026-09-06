@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "load:quote": "k6 run scripts/quote.js",
-    "load:execute": "k6 run scripts/execute.js"
+    "load:execute": "k6 run scripts/execute.js",
+    "load:deposit-intent": "k6 run scripts/deposit-intent.js",
+    "load:status": "k6 run scripts/status.js"
   }
 }

@@ -26,7 +26,8 @@ export interface ChainPairCoverage {
   routable: boolean;
 }
 
-const ACROSS_DEFAULT_CHAINS = new Set([1, 8453, 42161, 10, 137, 43114, 56, 59144]);
+/** Across serves the full mainnet set (must mirror `MAINNET_CHAIN_IDS`). */
+const ACROSS_DEFAULT_CHAINS = new Set([1, 8453, 42161, 10, 137, 43114, 56, 59144, 143, 324]);
 
 /** Mirrors the swap-adapter selection precedence in `DefaultRoutingProvider` without needing a live RPC client. */
 function isSwapConfigured(chainId: number, env: AppEnv): boolean {

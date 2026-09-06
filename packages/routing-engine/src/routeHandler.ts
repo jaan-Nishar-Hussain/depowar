@@ -71,7 +71,11 @@ export class RouteHandler {
     });
     if (this.options.trackTelemetry) {
       const store = getSharedTelemetryStore();
-      store.record(result.best.adapterId, { success: true, latencyMs: Date.now() - startedAt });
+      store.record(result.best.adapterId, {
+        success: true,
+        latencyMs: Date.now() - startedAt,
+        slippageBps: result.best.priceImpactBps,
+      });
     }
     return { best: result.best, alternates: result.alternates };
   }

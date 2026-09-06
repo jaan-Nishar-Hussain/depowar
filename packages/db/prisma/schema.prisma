@@ -179,8 +179,26 @@ model Quote {
   /// Snapshot of the losing candidates' summary metrics at quote time, so a
   /// historical quote can be audited against the routes it was not chosen over.
   alternatesSnapshot Json?
+  /// Normalized route entity (Next-Gen Routing PRD §Data Model). The Quote's
+  /// `routePath` remains the canonical execution plan; `route` mirrors it as a
+  /// first-class, queryable entity with a provider summary.
+  routeId            String?       @unique
+  route              Route?        @relation(fields: [routeId], references: [id], onDelete: SetNull)
   createdAt          DateTime      @default(now())
   transactions       Transaction[]
+}
+
+/// Normalized route entity (Next-Gen Routing PRD §Data Model): the steps a
+/// quote executes plus a summary of the providers involved. The Quote owns the
+/// FK (`Quote.routeId`), so the route can be created independently and then
+/// attached.
+model Route {
+  id            String   @id @default(cuid())
+  steps         Json
+  /// Summary of the providers used across all hops, e.g. "uniswap-v3+cctp-v2".
+  providerChain String?
+  quote         Quote?
+  createdAt     DateTime @default(now())
 }
 
 /// One row per on-chain hop (PRD §8).

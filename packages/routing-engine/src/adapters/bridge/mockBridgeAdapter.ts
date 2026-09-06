@@ -37,7 +37,7 @@ export function createMockBridgeAdapter(options: MockBridgeAdapterOptions): Brid
     amountIn: bigint;
   }): Promise<BridgeQuote> {
     // The mock bridge carries the same token across chains with no fee.
-    return { amountOut: req.amountIn, fee: 0n, timeSeconds: 90, reliability: 1 };
+    return { amountOut: req.amountIn, fee: 0n, timeSeconds: 90, reliability: 1, riskScore: 0.3 };
   }
 
   async function buildBridgeTransaction(

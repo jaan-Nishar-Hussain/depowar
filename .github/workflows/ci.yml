@@ -63,6 +63,76 @@ jobs:
           solc-select-version: 0.8.24
           slither-args: --filter-paths "lib|mocks|test|script"
 
+  load:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'pull_request'
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: paymesh
+          POSTGRES_PASSWORD: paymesh
+          POSTGRES_DB: paymesh
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U paymesh" --health-interval 5s --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://paymesh:paymesh@localhost:5432/paymesh
+      REDIS_URL: redis://localhost:6379
+      PAYMESH_DEST_CHAIN_ID: 80002
+      PAYMESH_ALLOW_MOCK_ROUTES: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Start anvil + deploy mocks
+        run: |
+          anvil --chain-id 31337 --port 8545 > /tmp/anvil.log 2>&1 &
+          sleep 3
+          pnpm --filter @paymesh/contracts deploy:anvil > /tmp/deploy.log 2>&1
+      - name: Migrate + seed
+        run: |
+          pnpm --filter @paymesh/db exec prisma migrate deploy
+          pnpm --filter @paymesh/db seed > /tmp/seed.log 2>&1
+          echo "RECIPIENT_ID=$(grep 'Seeded recipient id:' /tmp/seed.log | awk '{print $NF}')" >> "$GITHUB_ENV"
+          echo "API_KEY=$(grep 'API key (shown once):' /tmp/seed.log | awk '{print $NF}')" >> "$GITHUB_ENV"
+      - name: Start API
+        run: |
+          pnpm --filter @paymesh/api dev > /tmp/api.log 2>&1 &
+          sleep 15
+      - name: Create a deposit intent for polling/quote load
+        run: |
+          RESP=$(curl -s -X POST http://localhost:4000/v1/deposit-intents \
+            -H "x-api-key: $API_KEY" -H 'content-type: application/json' \
+            -d "{\"recipientId\":\"$RECIPIENT_ID\",\"toChain\":80002,\"toToken\":\"0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582\",\"idempotencyKey\":\"load-ci-1\"}")
+          echo "DEPOSIT_ID=$(echo "$RESP" | node -e 'process.stdin.on("data", d => { try { console.log(JSON.parse(d).depositId) } catch { console.log("") } })')" >> "$GITHUB_ENV"
+      - uses: grafana/k6-action@v0.3.1
+        with:
+          filename: load/scripts/deposit-intent.js
+          flags: -e API_URL=http://localhost:4000 -e API_KEY=${{ env.API_KEY }} -e RECIPIENT_ID=${{ env.RECIPIENT_ID }} -e LOAD_MODE=smoke
+      - uses: grafana/k6-action@v0.3.1
+        with:
+          filename: load/scripts/status.js
+          flags: -e API_URL=http://localhost:4000 -e API_KEY=${{ env.API_KEY }} -e DEPOSIT_ID=${{ env.DEPOSIT_ID }} -e LOAD_MODE=smoke
+
   wallet-e2e:
     runs-on: ubuntu-latest
     needs: test

@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { IS_PUBLIC_KEY, SCOPES_KEY, ClientContext } from './decorators';
 import { PayMeshError } from '../common/errors';
 import { AuthService } from './auth.service';
+import { augmentRequestContext } from '../common/request-context';
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
@@ -45,6 +46,7 @@ export class ApiKeyGuard implements CanActivate {
       if (!validSession) throw new UnauthorizedException('Session is no longer valid. Please sign in again.');
       (request as Request & { client: ClientContext }).client = { id: claims.clientId, scopes: ['*'] };
       (request as Request & { user: { id: string; email: string } }).user = { id: claims.sub, email: claims.email };
+      augmentRequestContext({ clientId: claims.clientId });
       return true;
     }
 
@@ -95,6 +97,7 @@ export class ApiKeyGuard implements CanActivate {
 
     const client: ClientContext = { id: record.clientId, scopes: record.scopes };
     (request as Request & { client: ClientContext }).client = client;
+    augmentRequestContext({ clientId: record.clientId });
 
     this.prisma.apiKey
       .update({ where: { id: record.id }, data: { lastUsedAt: new Date() } })

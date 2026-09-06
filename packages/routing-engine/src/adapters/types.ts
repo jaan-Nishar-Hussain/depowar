@@ -1,4 +1,5 @@
 import type { CandidateRoute, QuoteRequest, TransactionRequest } from '../types';
+import type { ExecuteRouteDeps, ExecutionResult } from '../execute';
 
 export interface SwapQuote {
   amountOut: bigint;
@@ -7,6 +8,8 @@ export interface SwapQuote {
   reliability: number;
   liquidityScore?: number;
   priceImpactBps?: number;
+  /** 0..1, higher is riskier (PRD §Scoring: risk dimension). */
+  riskScore?: number;
   gasCost?: bigint;
   available?: boolean;
   metadata?: Record<string, string | number | boolean>;
@@ -19,6 +22,8 @@ export interface BridgeQuote {
   reliability: number;
   liquidityScore?: number;
   priceImpactBps?: number;
+  /** 0..1, higher is riskier (PRD §Scoring: risk dimension). */
+  riskScore?: number;
   gasCost?: bigint;
   available?: boolean;
   metadata?: Record<string, string | number | boolean>;
@@ -64,6 +69,16 @@ export interface BridgeAdapter {
 export interface RouteProvider {
   readonly id: string;
   getCandidateRoutes(req: QuoteRequest): Promise<CandidateRoute[]>;
+  /**
+   * Executes a route this provider produced (PRD §Adapter Interfaces).
+   * Providers delegate to the shared engine executor, which signs and submits
+   * the normalized hop transactions; the API/worker custody paths use the same
+   * executor, so the seam exists literally without each provider re-implementing
+   * broadcasting. Optional: a provider without executable hop transactions
+   * (e.g. a pure quote source) can omit it and callers fall back to client-side
+   * hop signing.
+   */
+  executeRoute?(route: CandidateRoute, deps: ExecuteRouteDeps): Promise<ExecutionResult>;
 }
 
 export interface ProviderTelemetry {

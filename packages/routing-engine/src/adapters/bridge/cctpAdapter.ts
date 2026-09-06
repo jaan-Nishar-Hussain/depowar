@@ -101,6 +101,7 @@ export function createCctpAdapter(options: CctpAdapterOptions): BridgeAdapter {
       reliability: 0.995,
       liquidityScore: 1,
       priceImpactBps: 0,
+      riskScore: 0.05,
       available: fastFeeConfigured && fee <= req.amountIn,
       metadata: {
         protocol: 'cctp-v2',

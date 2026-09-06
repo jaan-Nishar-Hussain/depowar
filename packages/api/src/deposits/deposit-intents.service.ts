@@ -101,4 +101,75 @@ export class DepositIntentsService {
     }
     return deposit;
   }
+
+  async getRecoveryStatus(clientId: string, depositId: string) {
+    const deposit = await this.prisma.depositIntent.findFirst({
+      where: { id: depositId, clientId },
+      include: {
+        quotes: { orderBy: { createdAt: 'desc' }, take: 1 },
+        transactions: { orderBy: { hopIndex: 'asc' } },
+      },
+    });
+    if (!deposit) {
+      throw new PayMeshError('DEPOSIT_NOT_FOUND', `Deposit ${depositId} not found`, 'The deposit does not exist.', 404);
+    }
+
+    const confirmedTxs = deposit.transactions.filter((tx) => tx.status === 'CONFIRMED' || tx.status === 'SETTLEMENT_PENDING');
+    const hasBridgeTx = deposit.transactions.some((tx) => (tx.status === 'CONFIRMED' || tx.status === 'SETTLEMENT_PENDING') && tx.txHash);
+    const isSettled = deposit.status === 'SETTLED';
+
+    let fundsLocation = 'sender_source_chain';
+    if (isSettled) {
+      fundsLocation = 'recipient_settled';
+    } else if (hasBridgeTx) {
+      fundsLocation = 'in_flight_bridge';
+    }
+
+    return {
+      depositId: deposit.id,
+      status: deposit.status,
+      fundsLocation,
+      canRetry: deposit.status === 'FAILED' || deposit.status === 'AWAITING_SIGNATURE' || deposit.status === 'PENDING',
+      completedHops: confirmedTxs.length,
+      totalHops: deposit.transactions.length,
+      refundable: fundsLocation === 'sender_source_chain' && !isSettled,
+      instructions: fundsLocation === 'sender_source_chain'
+        ? 'Funds never left sender or reverted on source chain. Sender retains full balance.'
+        : fundsLocation === 'in_flight_bridge'
+          ? 'Funds were burned or locked on bridge rail. Relayer or monitor is processing destination settlement.'
+          : 'Funds have been delivered to recipient destination wallet.',
+    };
+  }
+
+  async retry(clientId: string, depositId: string) {
+    const deposit = await this.prisma.depositIntent.findFirst({
+      where: { id: depositId, clientId },
+      include: {
+        transactions: { orderBy: { hopIndex: 'asc' } },
+        quotes: { orderBy: { createdAt: 'desc' }, take: 1 },
+      },
+    });
+    if (!deposit) {
+      throw new PayMeshError('DEPOSIT_NOT_FOUND', `Deposit ${depositId} not found`, 'The deposit does not exist.', 404);
+    }
+    if (deposit.status === 'SETTLED') {
+      throw new PayMeshError('ALREADY_SETTLED', 'Deposit is already settled', 'This deposit has already settled.', 409);
+    }
+
+    await this.prisma.depositIntent.update({
+      where: { id: deposit.id },
+      data: { status: 'PENDING' },
+    });
+
+    await this.audit.record({
+      clientId,
+      actor: 'api',
+      action: 'deposit-intent.retried',
+      entityType: 'DepositIntent',
+      entityId: deposit.id,
+    });
+
+    return { depositId: deposit.id, status: 'PENDING', message: 'Deposit reset for retry. Request a fresh quote to proceed.' };
+  }
 }
+

@@ -29,6 +29,8 @@ const server = setupServer(
   http.get(`${BASE}/v1/quotes/qt_1`, () => HttpResponse.json({ id: 'qt_1', depositIntentId: 'dep_1', estimatedOutput: '1980000', status: 'ACTIVE' })),
   http.get(`${BASE}/v1/transactions/tx_1`, () => HttpResponse.json({ id: 'tx_1', txHash: '0x123', status: 'CONFIRMED' })),
   http.get(`${BASE}/v1/transactions`, () => HttpResponse.json([{ id: 'tx_1', txHash: '0x123', status: 'CONFIRMED' }])),
+  http.get(`${BASE}/v1/deposit-intents/dep_1/recovery`, () => HttpResponse.json({ depositId: 'dep_1', status: 'FAILED', fundsLocation: 'sender_source_chain', canRetry: true, completedHops: 0, totalHops: 2, refundable: true, instructions: 'Funds never left sender.' })),
+  http.post(`${BASE}/v1/deposit-intents/dep_1/retry`, () => HttpResponse.json({ depositId: 'dep_1', status: 'PENDING', message: 'Deposit reset for retry.' })),
   http.get(`${BASE}/v1/chains`, () => HttpResponse.json([{ id: 11155111, name: 'Ethereum Sepolia', testnet: true }])),
 );
 
@@ -43,6 +45,15 @@ describe('PayMeshClient', () => {
     const result = await client.createDepositIntent({ recipientId: 'rec_1', toChain: 84532, toToken: 'USDC' });
     expect(result.depositId).toBe('dep_1');
     expect(result.created).toBe(true);
+  });
+
+  it('checks recovery status and retries a failed intent', async () => {
+    const recovery = await client.getRecoveryStatus('dep_1');
+    expect(recovery.canRetry).toBe(true);
+    expect(recovery.fundsLocation).toBe('sender_source_chain');
+
+    const retry = await client.retryDepositIntent('dep_1');
+    expect(retry.status).toBe('PENDING');
   });
 
   it('quotes a route and exposes signable hop transactions', async () => {

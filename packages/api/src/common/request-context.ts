@@ -4,6 +4,8 @@ export interface RequestContext {
   requestId: string;
   ip?: string;
   userAgent?: string;
+  /** Tenant resolved by the API-key guard, for scoped metrics labels. */
+  clientId?: string;
 }
 
 const storage = new AsyncLocalStorage<RequestContext>();
@@ -21,4 +23,15 @@ export function runWithRequestContext<T>(context: RequestContext, callback: () =
 
 export function getRequestContext(): RequestContext | undefined {
   return storage.getStore();
+}
+
+/**
+ * Enriches the in-flight request context (the AsyncLocalStorage store is the
+ * same object reference for the whole request). The API-key guard calls this
+ * once the tenant is resolved so downstream metric labels can carry the
+ * `clientId` without threading it through every call site.
+ */
+export function augmentRequestContext(patch: Partial<RequestContext>): void {
+  const current = storage.getStore();
+  if (current) Object.assign(current, patch);
 }

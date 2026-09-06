@@ -5,6 +5,7 @@ export const QUEUE_TX_MONITOR = 'tx-monitor';
 export const QUEUE_WEBHOOK_DISPATCH = 'webhook-dispatch';
 export const QUEUE_QUOTE_EXPIRY = 'quote-expiry';
 export const QUEUE_FALLBACK_ROUTE = 'fallback-route';
+export const QUEUE_SETTLEMENT = 'settlement';
 
 export function connection(env: AppEnv): ConnectionOptions {
   return { url: env.REDIS_URL, maxRetriesPerRequest: null };

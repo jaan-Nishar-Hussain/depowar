@@ -2,6 +2,7 @@ import { encodeFunctionData, type Address, type PublicClient } from 'viem';
 import { readArtifact } from '@paymesh/contracts';
 import { effectiveSlippage, type QuoteRequest, type TransactionRequest } from '../../types';
 import type { SwapAdapter, SwapQuote } from '../types';
+import { estimatePriceImpactBps } from '../priceImpact';
 
 export interface MockDexAdapterOptions {
   publicClient: PublicClient;
@@ -41,7 +42,16 @@ export function createMockDexAdapter(options: MockDexAdapterOptions): SwapAdapte
       return { amountOut: 0n, fee: req.amountIn, timeSeconds: 30, reliability: 0 };
     }
     const fee = (req.amountIn * 30n) / 10_000n;
-    return { amountOut, fee, timeSeconds: 30, reliability: 1 };
+    const impactBps = await estimatePriceImpactBps(async (amount: bigint) => {
+      const out = await options.publicClient.readContract({
+        address: options.dexAddress,
+        abi: DEX_ABI,
+        functionName: 'getAmountOut',
+        args: [req.tokenIn as Address, req.tokenOut as Address, amount],
+      });
+      return out as bigint;
+    }, req.amountIn);
+    return { amountOut, fee, timeSeconds: 30, reliability: 1, priceImpactBps: impactBps, riskScore: 0.3 };
   }
 
   async function buildSwapTransaction(

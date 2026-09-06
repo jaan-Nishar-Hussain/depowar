@@ -7,6 +7,8 @@ on:
 
 env:
   DATABASE_URL: postgresql://paymesh:paymesh@localhost:5432/paymesh
+  REDIS_URL: redis://localhost:6379
+  REGISTRY: ghcr.io
 
 jobs:
   test-and-build:
@@ -44,12 +46,93 @@ jobs:
       - uses: foundry-rs/foundry-toolchain@v1
       - run: pnpm turbo run lint test test:contracts test:e2e build
       - uses: docker/setup-buildx-action@v3
-      - name: Build & push images
-        run: echo "Tag-triggered production deploy — wire docker build/push + Terraform apply here."
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract tag metadata
+        id: meta
+        run: |
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      - name: Build & push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository }}/api:latest
+            ${{ env.REGISTRY }}/${{ github.repository }}/api:${{ env.VERSION }}
+      - name: Build & push worker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/worker/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository }}/worker:latest
+            ${{ env.REGISTRY }}/${{ github.repository }}/worker:${{ env.VERSION }}
+
+  canary:
+    runs-on: ubuntu-latest
+    needs: test-and-build
+    if: always() && needs.test-and-build.result == 'success'
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: paymesh
+          POSTGRES_PASSWORD: paymesh
+          POSTGRES_DB: paymesh
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U paymesh" --health-interval 5s --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PAYMESH_ALLOW_MOCK_ROUTES: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Migrate schema
+        run: pnpm --filter @paymesh/db exec prisma migrate deploy
+      - name: Boot the API image and smoke it
+        run: |
+          docker pull ghcr.io/${{ github.repository }}/api:${{ env.VERSION }} || true
+          docker run -d --name canary-api -p 4000:4000 \
+            -e DATABASE_URL=${{ env.DATABASE_URL }} \
+            -e REDIS_URL=${{ env.REDIS_URL }} \
+            ghcr.io/${{ github.repository }}/api:latest
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:4000/v1/health; then break; fi
+            sleep 2
+          done
+          curl -sf http://localhost:4000/v1/health | grep -q '"status":"ok"'
+          curl -sf http://localhost:4000/v1/metrics | grep -q 'routing_quote_latency_ms_bucket'
+          echo "Canary OK — API healthy and /v1/metrics exposed."
 
   deploy-prod:
     runs-on: ubuntu-latest
-    needs: test-and-build
+    needs: canary
+    if: always() && needs.canary.result == 'success'
     steps:
-      - name: Promote to production
-        run: echo "Production deploy — see README §Deploy for the real pipeline."
+      - name: Promote tagged images to production
+        run: |
+          echo "Production promotion for ${GITHUB_REF_NAME} (images already pushed to ${{ env.REGISTRY }})."
+          echo "Wire Terraform apply / k8s rollout here. The images are tagged ghcr.io/${{ github.repository }}/api:${{ env.VERSION }} and /worker:${{ env.VERSION }}."

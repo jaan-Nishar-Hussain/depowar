@@ -47,3 +47,54 @@ groups:
         annotations:
           summary: 'Prometheus cannot scrape the PayMesh API /v1/metrics endpoint'
           description: 'The API process may be down, or the metrics endpoint is unreachable from Prometheus.'
+
+      - alert: PaymeshApi5xxRateHigh
+        expr: |
+          (
+            sum(rate(paymesh_api_http_requests_total{status_class="5xx"}[5m]))
+            /
+            sum(rate(paymesh_api_http_requests_total[5m]))
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'More than 1% of API requests returned 5xx over the last 5 minutes'
+          description: 'PRD §13 SLA: 99.9% API uptime. Check for crashes, DB connection exhaustion, or provider timeouts.'
+
+      - alert: PaymeshDepositsStuck
+        expr: paymesh_deposits_stuck > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Deposits are stuck in a non-terminal state for more than 10 minutes'
+          description: 'PRD §Monitoring: any deposit stuck > 10 minutes must alert. Check the tx-monitor/settlement queues and the recovery sweep.'
+
+      - alert: PaymeshQueueBacklogGrowth
+        expr: |
+          sum by (queue) (
+            max_over_time(paymesh_queue_backlog[15m])
+          ) > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'A BullMQ queue backlog has been above 100 jobs for 10 minutes'
+          description: 'PRD §13: queue backlog growth is an early signal of a stalled worker. Check worker health per queue.'
+
+      - alert: PaymeshSettlementSlaBreach
+        expr: |
+          (
+            sum(increase(routing_quote_latency_ms_bucket_count[2m]))
+            -
+            sum(increase(routing_quote_latency_ms_bucket{le="2000"}[2m]))
+          )
+          /
+          sum(increase(routing_quote_latency_ms_bucket_count[2m])) > 0.01
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'More than 1% of quotes took longer than 2 seconds over the last 10 minutes'
+          description: 'PRD §13 SLA: 99% of deposits settle within 2 minutes. Slow quotes indicate provider or RPC degradation.'

@@ -2,15 +2,20 @@ import type { WalletClient } from 'viem';
 import {
   ApiRequestError,
   type Address,
+  type AnalyticsOverview,
   type ApiErrorBody,
+  type ApiKeyMetadata,
   type CreateDepositIntentInput,
   type DepositIntentResult,
   type DepositStatus,
+  type Project,
   type QuoteQuery,
   type QuoteResult,
+  type Recipient,
   type RegisterWebhookInput,
   type SettlementUpdateInput,
   type TransactionRequest,
+  type WebhookSubscription,
 } from './types';
 
 export interface PayMeshClientConfig {
@@ -94,12 +99,26 @@ export class PayMeshClient {
     return this.request('/webhooks', { method: 'POST', body: JSON.stringify(input) });
   }
 
-  listWebhooks(): Promise<unknown[]> {
+  listWebhooks(): Promise<WebhookSubscription[]> {
     return this.request('/webhooks');
   }
 
   deleteWebhook(id: string): Promise<{ deleted: boolean }> {
     return this.request(`/webhooks/${id}`, { method: 'DELETE' });
+  }
+
+  /**
+   * Verifies the HMAC-SHA256 signature the worker attaches to webhook
+   * deliveries (`x-paymesh-signature`). Integrators should call this before
+   * trusting a payload (PRD §Webhooks & Status). Uses the Web Crypto API so it
+   * works in both browsers and Node 18+.
+   */
+  async verifyWebhookSignature(secret: string, body: string, signature: string): Promise<boolean> {
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const mac = await crypto.subtle.sign('HMAC', key, enc.encode(body));
+    const expected = Array.from(new Uint8Array(mac)).map((b) => b.toString(16).padStart(2, '0')).join('');
+    return constantTimeEqualHex(expected, signature);
   }
 
   listChains(): Promise<Array<{ id: number; name: string; testnet: boolean }>> {
@@ -111,13 +130,13 @@ export class PayMeshClient {
     return this.request('/destination-chains');
   }
 
-  getProject(): Promise<unknown> { return this.request('/project'); }
+  getProject(): Promise<Project> { return this.request('/project'); }
 
-  updateProject(name: string): Promise<unknown> {
+  updateProject(name: string): Promise<Project> {
     return this.request('/project', { method: 'PUT', body: JSON.stringify({ name }) });
   }
 
-  listApiKeys(): Promise<unknown[]> { return this.request('/api-keys'); }
+  listApiKeys(): Promise<ApiKeyMetadata[]> { return this.request('/api-keys'); }
 
   createApiKey(scopes?: string[]): Promise<{ id: string; key: string; scopes: string[]; warning: string }> {
     return this.request('/api-keys', { method: 'POST', body: JSON.stringify(scopes ? { scopes } : {}) });
@@ -127,16 +146,16 @@ export class PayMeshClient {
     return this.request(`/api-keys/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 
-  listRecipients(): Promise<unknown[]> { return this.request('/recipients'); }
+  listRecipients(): Promise<Recipient[]> { return this.request('/recipients'); }
 
-  createRecipient(input: { walletAddress: Address; chainId: number; token: string }): Promise<unknown> {
+  createRecipient(input: { walletAddress: Address; chainId: number; token: string }): Promise<Recipient> {
     return this.request('/recipients', { method: 'POST', body: JSON.stringify(input) });
   }
 
-  getAnalytics(days = 30): Promise<unknown> { return this.request(`/analytics/overview?days=${days}`); }
+  getAnalytics(days = 30): Promise<AnalyticsOverview> { return this.request(`/analytics/overview?days=${days}`); }
 
   listWorkspaces(): Promise<Array<{ id: string; name: string; projects: Array<{ id: string; name: string; clientId?: string; liveClientId?: string }> }>> { return this.request('/workspaces'); }
-  createWorkspace(name: string): Promise<unknown> { return this.request('/workspaces', { method: 'POST', body: JSON.stringify({ name }) }); }
+  createWorkspace(name: string): Promise<{ id: string; name: string }> { return this.request('/workspaces', { method: 'POST', body: JSON.stringify({ name }) }); }
   switchWorkspace(organizationId: string): Promise<{ accessToken: string; user: { id: string; email: string }; clientId: string }> { return this.request('/workspaces/switch', { method: 'POST', body: JSON.stringify({ organizationId }) }); }
   listProjects(): Promise<Array<{ id: string; name: string; environment: string; clientId?: string; liveClientId?: string }>> { return this.request('/projects'); }
   createProject(name: string, receiverAddress: Address, destinationChainId: number, destinationToken: 'USDC' | 'USDT', idempotencyKey?: string): Promise<{ project: { id: string; name: string; environment: string; clientId?: string; liveClientId?: string }; apiKey: { id: string; key: string; scopes: string[]; warning: string } }> { return this.request('/projects', { method: 'POST', headers: idempotencyKey ? { 'idempotency-key': idempotencyKey } : undefined, body: JSON.stringify({ name, receiverAddress, destinationChainId, destinationToken }) }); }
@@ -191,11 +210,38 @@ export class PayMeshClient {
     return this.request<QuoteResult>(`/quotes/${encodeURIComponent(quoteId)}`);
   }
 
-  getTransaction(transactionId: string): Promise<unknown> {
+  getTransaction(transactionId: string): Promise<import('./types').TransactionRecord> {
     return this.request(`/transactions/${encodeURIComponent(transactionId)}`);
   }
 
-  listTransactions(intentId: string): Promise<unknown[]> {
+  listTransactions(intentId: string): Promise<import('./types').TransactionRecord[]> {
     return this.request(`/transactions?intentId=${encodeURIComponent(intentId)}`);
   }
+
+  getRecoveryStatus(depositId: string): Promise<{
+    depositId: string;
+    status: string;
+    fundsLocation: string;
+    canRetry: boolean;
+    completedHops: number;
+    totalHops: number;
+    refundable: boolean;
+    instructions: string;
+  }> {
+    return this.request(`/deposit-intents/${encodeURIComponent(depositId)}/recovery`);
+  }
+
+  retryDepositIntent(depositId: string): Promise<{ depositId: string; status: string; message: string }> {
+    return this.request(`/deposit-intents/${encodeURIComponent(depositId)}/retry`, { method: 'POST' });
+  }
+}
+
+/** Constant-time hex comparison (PRD §Security: "compared using constant-time check"). */
+function constantTimeEqualHex(a: string, b: string): boolean {
+  const left = a.length % 2 === 0 ? a : `0${a}`;
+  const right = b.length % 2 === 0 ? b : `0${b}`;
+  if (left.length !== right.length) return false;
+  let diff = 0;
+  for (let i = 0; i < left.length; i++) diff |= left.charCodeAt(i) ^ right.charCodeAt(i);
+  return diff === 0;
 }

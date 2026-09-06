@@ -115,6 +115,16 @@ export class QuoteService {
     }
 
     await this.prisma.$transaction(async (tx) => {
+      const providerChain = [...new Set(best.route.map((hop) => hop.protocol).filter((p): p is string => !!p))].join('+');
+      // Normalized Route entity (Next-Gen Routing PRD §Data Model). Created
+      // first; the quote attaches it via `routeId`.
+      const route = await tx.route.create({
+        data: {
+          id: generateId('rt'),
+          steps: stringifyBigInts(best.route) as Prisma.InputJsonValue,
+          providerChain: providerChain || (best.adapterId ?? null),
+        },
+      });
       await tx.quote.create({
         data: {
           id: quoteId,
@@ -140,6 +150,7 @@ export class QuoteService {
           providerId: best.adapterId ?? null,
           simulated: isSimulated || this.env.SIMULATE_QUOTES,
           score: best.score ?? null,
+          routeId: route.id,
           // Losing candidates' summary metrics only (never their transaction
           // data), so a historical quote can be audited against what it beat
           // without persisting unused signable transactions.

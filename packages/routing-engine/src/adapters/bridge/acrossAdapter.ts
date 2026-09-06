@@ -41,7 +41,7 @@ export function createAcrossAdapter(options: AcrossAdapterOptions): BridgeAdapte
   const id = options.id ?? 'across';
   // Major chains Across serves (PRD §Priority Provider List). Overridable so
   // operators can tighten the matrix without code changes.
-  const fromChains = options.fromChains ?? [1, 8453, 42161, 10, 137, 43114, 56, 59144];
+  const fromChains = options.fromChains ?? [1, 8453, 42161, 10, 137, 43114, 56, 59144, 143, 324];
   const toChains = options.toChains ?? fromChains;
 
   async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -108,6 +108,7 @@ export function createAcrossAdapter(options: AcrossAdapterOptions): BridgeAdapte
       reliability: 0.97,
       liquidityScore: 0.9,
       priceImpactBps: 0,
+      riskScore: 0.1,
       available: true,
       metadata: { protocol: 'across', originChain: req.fromChain, destChain: req.toChain },
     };

@@ -1,6 +1,7 @@
 import { encodeFunctionData, type Address, type PublicClient } from 'viem';
 import { effectiveSlippage, type QuoteRequest, type TransactionRequest } from '../../types';
 import type { SwapAdapter, SwapQuote } from '../types';
+import { estimatePriceImpactBps } from '../priceImpact';
 
 const V2_ROUTER_ABI = [
   {
@@ -70,15 +71,24 @@ export function createV2DexAdapter(options: V2DexAdapterOptions): SwapAdapter {
     });
     const amountOut = amounts[amounts.length - 1] ?? 0n;
     if (amountOut === 0n) return { amountOut: 0n, fee: req.amountIn, timeSeconds: 30, reliability: 0 };
+    const path = pathFor(req.tokenIn, req.tokenOut);
+    const impactBps = await estimatePriceImpactBps(async (amount: bigint) => {
+      const small = await options.publicClient.readContract({
+        address: options.routerAddress,
+        abi: V2_ROUTER_ABI,
+        functionName: 'getAmountsOut',
+        args: [amount, path],
+      });
+      return small[small.length - 1] ?? 0n;
+    }, req.amountIn);
     return {
       amountOut,
       fee: 0n,
       timeSeconds: 30,
       reliability: 0.99,
       liquidityScore: 0.9,
-      // The router does not expose price impact; an aggregator can provide a
-      // more precise value. Keep this conservative for route scoring.
-      priceImpactBps: 0,
+      priceImpactBps: impactBps,
+      riskScore: 0.05,
     };
   }
 

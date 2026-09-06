@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { loadEnv } from '@paymesh/config';
@@ -23,6 +23,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { HealthController } from './health.controller';
+import { GlobalExceptionFilter } from './common/exception.filter';
 import { ENV } from './common/tokens';
 
 @Module({
@@ -58,6 +59,9 @@ import { ENV } from './common/tokens';
     // ApiKeyThrottlerGuard can rate-limit per API key instead of per IP.
     { provide: APP_GUARD, useClass: ApiKeyGuard },
     { provide: APP_GUARD, useClass: ApiKeyThrottlerGuard },
+    // Registered via APP_FILTER so it can inject PrismaService for the
+    // best-effort ErrorLog persistence (PRD §8 ErrorLog).
+    { provide: APP_FILTER, useClass: GlobalExceptionFilter },
   ],
 })
 export class AppModule {}

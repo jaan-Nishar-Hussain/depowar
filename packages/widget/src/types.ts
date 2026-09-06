@@ -10,8 +10,15 @@ export interface PayMeshDepositConfig {
   /** Destination chain id and token the recipient receives. */
   toChain: number;
   toToken: string;
+  /** Destination token symbol shown on the completion screen. */
+  toTokenSymbol?: string;
   /** Destination token decimals; USDC defaults to 6 when omitted. */
   toTokenDecimals?: number;
+  /**
+   * Source chains the payer may send from. Defaults to the mainnet set; pass
+   * testnet ids (11155111, 84532, 80002) to run against testnets.
+   */
+  supportedSourceChains?: number[];
   /** Source asset the payer holds (token address or 'native'). */
   fromToken?: string;
   /** Optional per-source-chain token map, useful when testing Sepolia and Base Sepolia together. */

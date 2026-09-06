@@ -112,3 +112,74 @@ export class ApiRequestError extends Error {
     this.name = 'ApiRequestError';
   }
 }
+
+// --- Dashboard / management resource types (PRD §API) ---
+
+export interface Project {
+  id: string;
+  name: string;
+  environment?: string;
+  clientId?: string;
+  liveClientId?: string;
+  createdAt?: string;
+  _count?: { apiKeys: number; recipients: number; depositIntents: number };
+}
+
+export interface ApiKeyMetadata {
+  id: string;
+  keyPrefix: string;
+  name?: string;
+  scopes: string[];
+  enabled: boolean;
+  lastUsedAt?: string;
+  expiresAt?: string;
+  revokedAt?: string;
+  createdAt: string;
+}
+
+export interface Recipient {
+  id: string;
+  walletAddress: string;
+  settlementType: string;
+  preferredChainId?: number;
+  preferredToken?: string;
+  kycStatus?: string;
+  settlementConfigs?: unknown[];
+  createdAt: string;
+}
+
+export interface AnalyticsOverview {
+  windowDays: number;
+  totalDeposits: number;
+  settledDeposits: number;
+  successRate: number;
+  averageSettlementTimeSeconds: number;
+  statusCounts: Record<string, number>;
+  providerBreakdown: Record<string, number>;
+  fallbackQuoteCount: number;
+  averageFeePerSettledDeposit: number;
+  averageOutputPerSettledDeposit: number;
+  recentDeposits: Array<{ id: string; status: string; toChainId: number; toToken: string }>;
+}
+
+export interface WebhookSubscription {
+  id: string;
+  url: string;
+  events: string[];
+  enabled: boolean;
+  createdAt: string;
+}
+
+export interface TransactionRecord {
+  id: string;
+  quoteId: string;
+  depositIntentId: string;
+  hopIndex: number;
+  chainId: number;
+  txHash?: string;
+  status: string;
+  errorCode?: string;
+  submittedAt?: string;
+  confirmedAt?: string;
+  settledAt?: string;
+}

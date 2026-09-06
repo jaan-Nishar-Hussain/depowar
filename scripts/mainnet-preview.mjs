@@ -43,7 +43,7 @@ function parseArgs() {
   return result;
 }
 
-const SUPPORTED = [1, 8453, 42161, 10, 137, 43114, 56, 59144];
+const SUPPORTED = [1, 8453, 42161, 10, 137, 43114, 56, 59144, 143, 324];
 
 function mainnetRpcFor(chainId) {
   const map = {
@@ -54,9 +54,13 @@ function mainnetRpcFor(chainId) {
     42161: env.ARBITRUM_MAINNET_RPC,
     10: env.OPTIMISM_MAINNET_RPC,
     59144: env.LINEA_MAINNET_RPC,
+    143: env.MONAD_MAINNET_RPC,
+    324: env.ZKSYNC_MAINNET_RPC,
     56: 'https://bsc-dataseed.bnbchain.org',
   };
   return map[chainId] ?? '';
+}
+
 async function main() {
   const args = parseArgs();
   const fromChain = Number(args.fromChain ?? '0');
@@ -217,4 +221,3 @@ main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
-}

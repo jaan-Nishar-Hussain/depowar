@@ -43,6 +43,18 @@ const EnvSchema = z.object({
     z.boolean(),
   ).default(true),
   WEBHOOK_MAX_ATTEMPTS: z.coerce.number().default(5),
+  // Fallback-route orchestration guards (PRD §Fallback Safety: no infinite
+  // loops). FALLBACK_MAX_DEPTH caps how many chained fallback re-quotes a
+  // single deposit may attempt before it is marked FAILED.
+  FALLBACK_MAX_DEPTH: z.coerce.number().default(3),
+  // How many times the fallback-route job itself retries on transient failure.
+  FALLBACK_QUEUE_ATTEMPTS: z.coerce.number().default(5),
+  // Periodic re-enqueue interval for SETTLEMENT_PENDING rows (ms). The
+  // boot-only recovery sweep is not enough: a worker restart or a long
+  // attestation must not strand an in-flight burn.
+  RECOVERY_SWEEP_INTERVAL_MS: z.coerce.number().default(300_000),
+  // How often the worker recomputes the daily AnalyticsDaily rollups (ms).
+  ANALYTICS_ROLLUP_INTERVAL_MS: z.coerce.number().default(3_600_000),
   EXECUTION_PRIVATE_KEY: z.string().default(''),
   SEPOLIA_PRIVATE_KEY: z.string().default(''),
   BASE_SEPOLIA_PRIVATE_KEY: z.string().default(''),

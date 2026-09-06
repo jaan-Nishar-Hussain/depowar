@@ -1,16 +1,20 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
-export const options = {
-  stages: [
-    { duration: '30s', target: 10 },
-    { duration: '30s', target: 40 },
-    { duration: '30s', target: 0 },
-  ],
-  thresholds: {
-    http_req_failed: ['rate<0.01'],
-  },
-};
+const smoke = __ENV.LOAD_MODE === 'smoke';
+
+export const options = smoke
+  ? { vus: 5, duration: '30s', thresholds: { http_req_failed: ['rate<0.01'] } }
+  : {
+      stages: [
+        { duration: '30s', target: 10 },
+        { duration: '30s', target: 40 },
+        { duration: '30s', target: 0 },
+      ],
+      thresholds: {
+        http_req_failed: ['rate<0.01'],
+      },
+    };
 
 const API_URL = __ENV.API_URL || 'http://localhost:4000';
 const API_KEY = __ENV.API_KEY;

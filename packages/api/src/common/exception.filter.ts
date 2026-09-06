@@ -4,6 +4,7 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Inject,
   Logger,
 } from '@nestjs/common';
 import { Response, Request } from 'express';
@@ -11,12 +12,15 @@ import { ZodError } from 'zod';
 import { PayMeshError, ErrorCodes } from './errors';
 import { PayMeshRoutingError } from '@paymesh/routing-engine';
 import { stringifyBigInts } from './serialize';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger('ExceptionFilter');
 
-  catch(exception: unknown, host: ArgumentsHost): void {
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+
+  async catch(exception: unknown, host: ArgumentsHost): Promise<void> {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request & { requestId?: string }>();
@@ -61,6 +65,27 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       code = ErrorCodes.DATABASE_CONFLICT;
       userMessage = 'The request conflicts with existing data.';
       details = { dbCode: prismaError.code };
+    }
+
+    // Best-effort ErrorLog persistence (PRD §8 ErrorLog). The ErrorLog model
+    // was never written; every surfaced error now leaves an audit trail with
+    // request context for support debugging.
+    try {
+      await this.prisma.errorLog.create({
+        data: {
+          code,
+          message: message.slice(0, 4000),
+          context: stringifyBigInts({
+            requestId: request.requestId,
+            path: request.url,
+            status,
+            cause: exception instanceof Error ? exception.message : String(exception),
+          }) as object,
+        },
+      });
+    } catch {
+      // Persistence is best-effort — a DB outage must not prevent the error
+      // response from reaching the client.
     }
 
     this.logger.error(

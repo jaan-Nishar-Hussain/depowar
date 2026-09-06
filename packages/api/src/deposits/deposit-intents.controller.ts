@@ -20,4 +20,16 @@ export class DepositIntentsController {
   async findOne(@Client() client: ClientContext, @Param('id') id: string) {
     return stringifyBigInts(await this.service.findOne(client.id, id));
   }
+
+  @Get(':id/recovery')
+  @Scopes('deposits')
+  async getRecovery(@Client() client: ClientContext, @Param('id') id: string) {
+    return stringifyBigInts(await this.service.getRecoveryStatus(client.id, id));
+  }
+
+  @Post(':id/retry')
+  @Scopes('deposits')
+  async retry(@Client() client: ClientContext, @Param('id') id: string) {
+    return stringifyBigInts(await this.service.retry(client.id, id));
+  }
 }

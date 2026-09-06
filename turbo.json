@@ -32,6 +32,10 @@
     "seed": {
       "dependsOn": ["build"],
       "cache": false
+    },
+    "load": {
+      "cache": false,
+      "outputs": []
     }
   }
 }

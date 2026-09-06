@@ -8,6 +8,7 @@ const apiKey = import.meta.env.VITE_API_KEY ?? '';
 const recipientId = import.meta.env.VITE_RECIPIENT_ID ?? '';
 const destinationChain = Number(import.meta.env.VITE_TO_CHAIN ?? 137);
 const destinationToken = import.meta.env.VITE_TO_TOKEN ?? '0xc2132D05D31c914a87C6611C10748AEb04B58e8F';
+const destinationTokenSymbol = import.meta.env.VITE_TO_TOKEN_SYMBOL ?? 'USDT';
 const baseUsdc = import.meta.env.VITE_BASE_USDC ?? '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 
 const sdk = new PayMeshClient({ baseUrl: apiUrl, apiKey });
@@ -43,6 +44,7 @@ export function App() {
           recipientId,
           toChain: destinationChain,
           toToken: destinationToken,
+          toTokenSymbol: destinationTokenSymbol,
           toTokenDecimals: 6,
           fromTokenByChain: { 8453: baseUsdc },
           supportedTokensByChain: { 8453: [{ symbol: 'USDC', address: baseUsdc, decimals: 6 }] },

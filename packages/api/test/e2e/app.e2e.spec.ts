@@ -9,7 +9,6 @@ import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { PrismaClient, hashApiKey } from '@paymesh/db';
 import { AppModule } from '../../dist/app.module';
-import { GlobalExceptionFilter } from '../../dist/common/exception.filter';
 import { RequestIdMiddleware } from '../../dist/common/request-id.middleware';
 import { ROUTING_PROVIDER } from '../../dist/common/tokens';
 import type { RoutingProvider } from '../../dist/quote/routing.provider';
@@ -86,7 +85,7 @@ beforeAll(async () => {
   prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
   const client = await prisma.client.create({ data: { name: 'e2e-client' } });
   await prisma.apiKey.create({
-    data: { clientId: client.id, keyHash: hashApiKey(API_KEY), scopes: ['deposits', 'quote', 'webhooks', 'recipients'] },
+    data: { clientId: client.id, keyHash: hashApiKey(API_KEY), scopes: ['deposits', 'quote', 'webhooks', 'recipients', 'management'] },
   });
   const recipient = await prisma.recipient.create({
     data: {
@@ -106,7 +105,6 @@ beforeAll(async () => {
   app = moduleRef.createNestApplication();
   app.setGlobalPrefix('v1');
   app.use(RequestIdMiddleware);
-  app.useGlobalFilters(new GlobalExceptionFilter());
   await app.init();
 }, 120_000);
 
@@ -297,5 +295,70 @@ describe('PayMesh API e2e', () => {
       .set('x-api-key', API_KEY)
       .expect(404);
     expect(res.body.error.code).toBe('DEPOSIT_NOT_FOUND');
+  });
+
+  describe('management endpoints (PRD §API: projects/keys/recipients/analytics)', () => {
+    it('gets and updates the current project via the management API key', async () => {
+      const got = await http().get('/v1/project').set('x-api-key', API_KEY).expect(200);
+      expect(got.body.id).toBeTruthy();
+      const updated = await http()
+        .put('/v1/project')
+        .set('x-api-key', API_KEY)
+        .send({ name: 'e2e-renamed' })
+        .expect(200);
+      expect(updated.body.name).toBe('e2e-renamed');
+    });
+
+    it('lists, creates (plaintext once) and revokes API keys', async () => {
+      const listed = await http().get('/v1/api-keys').set('x-api-key', API_KEY).expect(200);
+      expect(Array.isArray(listed.body)).toBe(true);
+
+      const created = await http()
+        .post('/v1/api-keys')
+        .set('x-api-key', API_KEY)
+        .send({ scopes: ['deposits'] })
+        .expect(201);
+      expect(created.body.key).toBeTruthy();
+      expect(created.body.key.length).toBeGreaterThan(30); // plaintext shown once
+
+      const removed = await http()
+        .delete(`/v1/api-keys/${created.body.id}`)
+        .set('x-api-key', API_KEY)
+        .expect(200);
+      expect(removed.body.revoked).toBe(true);
+    });
+
+    it('lists and creates recipients', async () => {
+      const listed = await http().get('/v1/recipients').set('x-api-key', API_KEY).expect(200);
+      expect(Array.isArray(listed.body)).toBe(true);
+
+      const created = await http()
+        .post('/v1/recipients')
+        .set('x-api-key', API_KEY)
+        .send({ walletAddress: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F', chainId: 84532, token: 'USDC', settlementType: 'EOA' })
+        .expect(201);
+      expect(created.body.id).toBeTruthy();
+      expect(created.body.settlementConfigs).toHaveLength(1);
+    });
+
+    it('updates a receiver via the PRD PUT /v1/receiver/:id endpoint', async () => {
+      const res = await http()
+        .put(`/v1/receiver/${recipientId}`)
+        .set('x-api-key', API_KEY)
+        .send({ chainId: 84532, token: 'USDT', settlementType: 'EOA' })
+        .expect(200);
+      expect(res.body.token).toBe('USDT');
+    });
+
+    it('returns analytics overview for the client', async () => {
+      const res = await http()
+        .get('/v1/analytics/overview')
+        .query({ days: 7 })
+        .set('x-api-key', API_KEY)
+        .expect(200);
+      expect(res.body.totalDeposits).toBeGreaterThanOrEqual(1);
+      expect(typeof res.body.successRate).toBe('number');
+      expect(typeof res.body.providerBreakdown).toBe('object');
+    });
   });
 });

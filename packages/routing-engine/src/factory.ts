@@ -33,7 +33,13 @@ export interface AdapterConfig {
   env?: AppEnv;
 }
 
-export const MAINNET_CHAIN_IDS = new Set([1, 8453, 42161, 10, 137, 43114, 56, 59144]);
+/**
+ * The full mainnet chain set registered in `@paymesh/config` (Next-Gen Routing
+ * PRD §Scope: 8 source + 8 destination chains). Every federated provider must
+ * use this single source of truth so BNB, zkSync, and Monad are never
+ * silently excluded from routing.
+ */
+export const MAINNET_CHAIN_IDS = new Set([1, 8453, 42161, 10, 137, 43114, 56, 59144, 143, 324]);
 
 /**
  * Federated swap-adapter builder (single source of truth for the API and the

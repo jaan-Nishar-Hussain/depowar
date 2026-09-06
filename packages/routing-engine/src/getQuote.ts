@@ -48,6 +48,7 @@ function directCandidate(req: QuoteRequest): CandidateRoute {
     reliability: 1,
     liquidityScore: 1,
     priceImpactBps: 0,
+    riskScore: 0,
     available: true,
     adapterId: 'direct',
     transactionRequest: transferTx,
@@ -355,19 +356,29 @@ export async function getQuote(
 
   // Simulation (PRD §simulate before you commit): when a stateless `eth_call`
   // callback is provided, try candidates in rank order and skip any whose
-  // first signable transaction reverts.
+  // signable transactions revert. Every hop is simulated (PRD §Simulation:
+  // "Uniswap or 1inch quotes are simulated via their on-chain router
+  // contracts"), not just the first — later hops that would revert are caught
+  // before a quote is returned.
   if (deps.simulateTx) {
     const executable: CandidateRoute[] = [];
     for (const candidate of ranked) {
-      if (candidate.transactionRequest) {
+      const hops = candidate.hopTransactionRequests && candidate.hopTransactionRequests.length > 0
+        ? candidate.hopTransactionRequests
+        : candidate.transactionRequest
+          ? [candidate.transactionRequest]
+          : [];
+      let ok = true;
+      for (const tx of hops) {
         try {
-          await deps.simulateTx(candidate.transactionRequest);
+          await deps.simulateTx(tx);
         } catch (error) {
           deps.metrics?.recordRouteDiscarded((error as Error).message ?? 'simulation failed');
-          continue;
+          ok = false;
+          break;
         }
       }
-      executable.push(candidate);
+      if (ok) executable.push(candidate);
     }
     ranked = executable;
   }

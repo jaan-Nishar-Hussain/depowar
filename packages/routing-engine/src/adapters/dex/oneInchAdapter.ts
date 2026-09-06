@@ -22,6 +22,8 @@ export interface OneInchAdapterOptions {
 
 interface OneInchQuoteResponse {
   dstAmount?: string;
+  /** Percentage price impact, e.g. "0.35" means 0.35%. */
+  estimatedPriceImpact?: number | string;
   error?: string;
   description?: string;
 }
@@ -97,13 +99,18 @@ export function createOneInchAdapter(options: OneInchAdapterOptions): SwapAdapte
     if (amountOut === 0n) {
       return { amountOut: 0n, fee: req.amountIn, timeSeconds: 30, reliability: 0, available: false };
     }
+    const impact = Number(body.estimatedPriceImpact ?? 0);
+    const impactBps = Number.isFinite(impact)
+      ? (impact < 1 ? Math.round(impact * 10_000) : Math.round(impact * 100))
+      : undefined;
     return {
       amountOut,
       fee: 0n,
       timeSeconds: 30,
       reliability: 0.98,
       liquidityScore: 0.9,
-      priceImpactBps: 0,
+      priceImpactBps: impactBps,
+      riskScore: 0.08,
       available: true,
       metadata: { protocol: '1inch-aggregator', chain: req.chain },
     };
@@ -112,13 +119,15 @@ export function createOneInchAdapter(options: OneInchAdapterOptions): SwapAdapte
   async function buildSwapTransaction(req: QuoteRequest, quote: SwapQuote): Promise<TransactionRequest> {
     if (!req.fromAddress) throw new Error('A sender address is required for a 1inch swap');
     const slippage = effectiveSlippage(req);
+    // 1inch expects slippage as a percentage string (0.5 for 50 bps), not a
+    // basis-point fraction. Dividing bps by 100 converts 50 bps -> 0.5.
     const params = new URLSearchParams({
       src: req.fromToken,
       dst: req.toToken,
       amount: req.fromAmount.toString(),
       from: req.fromAddress,
       origin: req.fromAddress,
-      slippage: String(slippage / 10_000),
+      slippage: String(slippage / 100),
       disableEstimate: 'true',
     });
     const body = await request<OneInchSwapResponse>(`/swap/v6.0/${req.fromChain}/swap?${params.toString()}`);

@@ -109,6 +109,7 @@ async function quoteBridge(req: {
       reliability: 0.93,
       liquidityScore: 0.8,
       priceImpactBps: 0,
+      riskScore: 0.2,
       available: true,
       metadata: { protocol: 'ccip', sourceChainSelector: options.sourceChainSelector.toString() },
     };

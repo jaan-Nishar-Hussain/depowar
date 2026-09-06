@@ -86,6 +86,18 @@ node scripts/mainnet-preview.mjs --fromChain 1 --fromToken USDT --fromAmount 10 
 
 Failure/recovery semantics: see [`docs/stuck-fund-recovery.md`](docs/stuck-fund-recovery.md).
 
+### Mainnet contracts: adapter-level only (off-chain)
+
+CCTP V2 and Uniswap V3 integrations are **off-chain TS adapters** in
+`packages/routing-engine` (`adapters/bridge/cctpAdapter.ts`,
+`adapters/dex/uniswapV3Adapter.ts`), driven by the protocol addresses in
+`packages/config/src/mainnet.ts`. There are no custom Solidity contracts for
+CCTP/Uniswap on mainnet, and `DepositReceiver` (a non-retaining settlement
+target) stays testnet-only until a formal audit — real funds move only through
+vetted, audited protocol contracts (Circle CCTP, Uniswap routers) via
+sender-signed hop transactions. `packages/contracts` contains only the mock
+DEX/bridge fixtures used by deterministic local tests.
+
 ## Repo layout (Turborepo 2 + pnpm)
 
 ```

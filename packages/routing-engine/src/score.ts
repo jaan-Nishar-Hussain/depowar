@@ -35,7 +35,10 @@ export function rankRoutes(
     const reliability = stats?.reliability ?? route.reliability;
     const reliabilityScore = 1 - clamp(reliability);
     const liquidityScore = 1 - clamp(route.liquidityScore ?? 1);
-    const slippageScore = Math.min(1, (route.priceImpactBps ?? 0) / 10_000);
+    // Slippage dimension: prefer the telemetry EWMA when the provider has
+    // history, otherwise the live quote's price impact. Higher is worse.
+    const slippageBps = stats?.averageSlippageBps ?? route.priceImpactBps ?? 0;
+    const slippageScore = Math.min(1, slippageBps / 10_000);
     const riskScore = clamp(stats?.riskScore ?? route.riskScore ?? 0);
 
     const score =

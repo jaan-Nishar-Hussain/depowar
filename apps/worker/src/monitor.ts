@@ -1,40 +1,19 @@
 import { Job } from 'bullmq';
-import { createPublicClient, http, isAddress, parseEventLogs, type Address, type Hex, type Log } from 'viem';
-import { cctpDomain, cctpMessageTransmitter, cctpTokenMessenger, getChain, getToken, mainnetUniswap, MIN_CONFIRMATIONS, QUOTE_TTL_SECONDS } from '@paymesh/config';
+import { createPublicClient, http, type Address, type Hex } from 'viem';
+import { cctpDomain, cctpTokenMessenger, getChain, getToken, mainnetUniswap, MIN_CONFIRMATIONS, QUOTE_TTL_SECONDS } from '@paymesh/config';
 import { generateId } from '@paymesh/db';
-import { readArtifact } from '@paymesh/contracts';
 import {
   getFallbackQuote,
   getFallbackQuoteFromHop,
   createDefaultAdapters,
   createRouteApiAdapter,
   createLifiRouteProvider,
-  createPrivateKeySigner,
   type QuoteRequest,
 } from '@paymesh/routing-engine';
-import { WorkerContext, emitEvent, enqueueFallback } from './context';
+import { WorkerContext, emitEvent, enqueueFallback, enqueueSettlement } from './context';
 import { viemChain } from './viem';
 import { stringifyBigInts } from './json';
 import type { RouteHopLike } from './types';
-
-const BRIDGE_ABI = readArtifact('MockBridge').abi;
-const ERC20_BALANCE_ABI = [{
-  type: 'function', name: 'balanceOf', stateMutability: 'view',
-  inputs: [{ name: 'account', type: 'address' }], outputs: [{ name: '', type: 'uint256' }],
-}] as const;
-
-const CCTP_MESSAGE_TRANSMITTER_V2_ABI = [{
-  type: 'function', name: 'receiveMessage', stateMutability: 'nonpayable',
-  inputs: [
-    { name: 'message', type: 'bytes' },
-    { name: 'attestation', type: 'bytes' },
-  ],
-  outputs: [{ name: 'success', type: 'bool' }],
-}] as const;
-
-function cctpDomainForChain(chainId: number): number {
-  return cctpDomain(chainId);
-}
 
 interface MonitorJobData {
   transactionId: string;
@@ -79,7 +58,13 @@ export async function processTxMonitor(job: Job<MonitorJobData>, ctx: WorkerCont
     });
     // A timeout does not prove that the transaction was dropped. Retrying the
     // monitor is safe; routing the same funds again before the original tx is
-    // known to be failed is not.
+    // known to be failed is not. Once BullMQ's monitor retries are exhausted,
+    // route around the stuck hop via the fallback queue (PRD §Fallback).
+    const attempts = job.opts.attempts ?? 1;
+    if (job.attemptsMade + 1 >= attempts) {
+      await triggerFallback(ctx, transaction.quote, transaction.hopIndex);
+      return;
+    }
     throw new Error(`Transaction ${transaction.txHash} is still pending`);
   }
 
@@ -131,272 +116,56 @@ export async function processTxMonitor(job: Job<MonitorJobData>, ctx: WorkerCont
     return;
   }
 
-  // Terminal hop.
-  if (hop?.type === 'bridge') {
-    if (hop.protocol?.startsWith('mock-bridge-')) {
-      await settleBridge(ctx, transaction.quote as never, hop, transaction.txHash as Hex);
-    } else if (hop.protocol?.startsWith('cctp-v2-')) {
-      await settleCctp(ctx, transaction.quote as never, hop, transaction.txHash as Hex);
-    } else {
-      await waitForDestinationSettlement(ctx, transaction.quote as never, hop);
-    }
-  } else if (hop?.type === 'transfer') {
-    await waitForDestinationSettlement(ctx, transaction.quote as never, hop);
+  // Terminal hop: hand off to the dedicated settlement queue so a long CCTP
+  // attestation wait does not block the single-concurrency tx-monitor.
+  if (hop?.type === 'bridge' || hop?.type === 'transfer') {
+    await enqueueSettlement(ctx, transaction.id);
   }
-
-  if (terminalSettlement) {
-    await ctx.prisma.transaction.update({
-      where: { id: transaction.id },
-      data: { status: 'CONFIRMED', confirmedAt: new Date() },
-    });
-  }
-
-  await ctx.prisma.depositIntent.update({
-    where: { id: transaction.depositIntentId },
-    data: { status: 'SETTLED' },
-  });
-  await ctx.prisma.transaction.update({
-    where: { id: transaction.id },
-    data: { status: 'CONFIRMED', confirmedAt: new Date(), settledAt: new Date() },
-  });
-  await emitEvent(ctx, {
-    clientId: transaction.quote.depositIntent.clientId,
-    type: 'deposit.settled',
-    payload: {
-      depositId: transaction.depositIntentId,
-      quoteId: transaction.quoteId,
-      receivedAmount: transaction.quote.estimatedOutput.toString(),
-    },
-    depositIntentId: transaction.depositIntentId,
-  });
 }
 
 /**
- * Completes a Circle CCTP V2 burn. The source burn is user-signed; after it
- * confirms, Iris supplies the attested message and the PayMesh relayer pays
- * Polygon Amoy gas for MessageTransmitterV2.receiveMessage.
+ * Number of chained fallback re-quotes already performed for this deposit,
+ * derived from the `fallbackFromQuoteId` chain (PRD §Fallback Safety: no
+ * infinite loops). The original quote has depth 0; each re-quote adds one.
  */
-async function settleCctp(
-  ctx: WorkerContext,
-  quote: {
-    id: string;
-    depositIntentId: string;
-    toAddress: string | null;
-    settlementBaseline: unknown;
-    estimatedOutput: unknown;
-    depositIntent: { toChainId: number; toToken: string };
-  },
-  hop: RouteHopLike,
-  sourceTxHash: Hex,
-): Promise<void> {
-  const existingSettlement = await ctx.prisma.transaction.findFirst({
-    where: { quoteId: quote.id, hopIndex: 99, status: 'CONFIRMED' },
-  });
-  if (existingSettlement) return;
-  if (!quote.toAddress) throw new Error('CCTP quote has no destination address');
-
-  const sourceDomain = cctpDomainForChain(hop.fromChain ?? 0);
-  const destinationChain = hop.toChain ?? quote.depositIntent.toChainId;
-  const transmitter = cctpMessageTransmitter(destinationChain) as Address;
-  if (!transmitter) throw new Error(`CCTP message transmitter is not configured for chain ${destinationChain}`);
-
-  // Perform one non-blocking check. A pending/404 response is retried by
-  // BullMQ instead of occupying a worker slot during Circle finalization.
-  const url = `${ctx.env.CCTP_IRIS_API_URL.replace(/\/$/, '')}/v2/messages/${sourceDomain}?transactionHash=${sourceTxHash}`;
-  const response = await fetch(url, { headers: { accept: 'application/json' } });
-  if (!response.ok) {
-    if (response.status === 404 || response.status === 429) throw new Error('CCTP attestation is not ready');
-    throw new Error(`CCTP Iris request failed with HTTP ${response.status}`);
+async function getFallbackDepth(ctx: WorkerContext, quoteId: string): Promise<number> {
+  let depth = 0;
+  let current = quoteId;
+  while (current) {
+    const row = await ctx.prisma.quote.findUnique({
+      where: { id: current },
+      select: { fallbackFromQuoteId: true },
+    }) as { fallbackFromQuoteId: string | null } | null;
+    if (!row?.fallbackFromQuoteId) break;
+    depth += 1;
+    current = row.fallbackFromQuoteId;
   }
-  const body = await response.json() as {
-    messages?: Array<{ message?: string; attestation?: string | null; status?: string }>;
-  };
-  const item = body.messages?.[0];
-  const message = item?.message?.startsWith('0x') ? item.message as Hex : undefined;
-  const attestation = item?.attestation?.startsWith('0x') && item.attestation !== '0x'
-    ? item.attestation as Hex
-    : undefined;
-  if (!message || !attestation) throw new Error('CCTP attestation is not ready');
-
-  const destinationInfo = getChain(destinationChain);
-  const relayerKey = ctx.env.RELAYER_PRIVATE_KEY as Hex;
-  if (!relayerKey) throw new Error('RELAYER_PRIVATE_KEY is required for CCTP destination settlement');
-  const signer = createPrivateKeySigner(relayerKey);
-  const destinationClient = createPublicClient({
-    chain: viemChain(destinationChain),
-    transport: http(destinationInfo.rpcUrl),
-  });
-  // Use the pending nonce so queued/in-flight relayer transactions are
-  // included. This avoids reusing a nonce that was already broadcast.
-  const nonce = await destinationClient.getTransactionCount({
-    address: signer.address,
-    blockTag: 'pending',
-  });
-  const walletClient = signer.walletClient(viemChain(destinationChain), destinationInfo.rpcUrl);
-  const settleHash = await walletClient.writeContract({
-    address: transmitter,
-    abi: CCTP_MESSAGE_TRANSMITTER_V2_ABI,
-    functionName: 'receiveMessage',
-    args: [message, attestation],
-    account: walletClient.account!,
-    chain: viemChain(destinationChain),
-    nonce,
-  });
-  const receipt = await destinationClient.waitForTransactionReceipt({
-    hash: settleHash,
-    confirmations: MIN_CONFIRMATIONS,
-    timeout: ctx.env.TX_MONITOR_TIMEOUT_MS,
-  });
-  if (receipt.status === 'reverted') throw new Error('CCTP receiveMessage transaction reverted');
-
-  await waitForDestinationSettlement(ctx, quote, hop);
-  await ctx.prisma.transaction.create({
-    data: {
-      id: generateId('tx'),
-      quoteId: quote.id,
-      depositIntentId: quote.depositIntentId,
-      hopIndex: 99,
-      chainId: destinationChain,
-      txHash: settleHash,
-      status: 'CONFIRMED',
-      confirmedAt: new Date(),
-    },
-  });
-}
-
-/**
- * Acts as the mock bridge relayer: reads the TransferInitiated id from the
- * confirmed source tx and calls settle() on the destination-side bridge,
- * paying the recipient. Real bridges settle themselves; this is testnet-only.
- */
-async function settleBridge(
-  ctx: WorkerContext,
-  quote: {
-    id: string;
-    depositIntentId: string;
-    toAddress: string | null;
-    routePath: unknown;
-  },
-  hop: RouteHopLike,
-  sourceTxHash: Hex,
-): Promise<void> {
-  const existingSettlement = await ctx.prisma.transaction.findFirst({
-    where: { quoteId: quote.id, hopIndex: 99, status: 'CONFIRMED' },
-  });
-  if (existingSettlement) return;
-  const sourceChain = getChain(hop.fromChain ?? 0);
-  const destChain = getChain(hop.toChain ?? 0);
-  const sourceClient = createPublicClient({
-    chain: viemChain(hop.fromChain ?? 0),
-    transport: http(sourceChain.rpcUrl),
-  });
-
-  const receipt = await sourceClient.getTransactionReceipt({ hash: sourceTxHash });
-  const initiated = parseEventLogs({
-    abi: BRIDGE_ABI,
-    logs: receipt.logs as Log[],
-    eventName: 'TransferInitiated',
-  });
-  const transferId = (initiated[0]?.args as { id?: bigint } | undefined)?.id;
-  if (transferId === undefined) {
-    throw new Error('TransferInitiated log not found in bridge deposit receipt');
-  }
-
-  const relayerKey = (ctx.env.RELAYER_PRIVATE_KEY || ctx.env.ANVIL_ACCOUNT_PRIVATE_KEY) as Hex;
-  const destBridgeAddress = (ctx.env.PAYMESH_DEST_BRIDGE_ADDRESS ||
-    ctx.env.PAYMESH_BRIDGE_ADDRESS) as Address;
-  if (!destBridgeAddress) {
-    throw new Error('PAYMESH_BRIDGE_ADDRESS not configured for settlement');
-  }
-
-  const walletClient = createPrivateKeySigner(relayerKey).walletClient(viemChain(hop.toChain ?? 0), destChain.rpcUrl);
-  const amount = BigInt(String(hop.amountOut ?? 0n));
-  const settleHash = await walletClient.writeContract({
-    address: destBridgeAddress,
-    abi: BRIDGE_ABI,
-    functionName: 'settle',
-    account: walletClient.account!,
-    args: [
-      transferId,
-      (hop.toToken ?? '0x0000000000000000000000000000000000000000') as Address,
-      amount,
-      (quote.toAddress ?? '0x0000000000000000000000000000000000000000') as Address,
-    ],
-    chain: viemChain(hop.toChain ?? 0),
-  });
-
-  const destClient = createPublicClient({
-    chain: viemChain(hop.toChain ?? 0),
-    transport: http(destChain.rpcUrl),
-  });
-  const settleReceipt = await destClient.waitForTransactionReceipt({ hash: settleHash, timeout: ctx.env.TX_MONITOR_TIMEOUT_MS });
-  if (settleReceipt.status === 'reverted') {
-    throw new Error('Destination bridge settlement transaction reverted');
-  }
-  await waitForDestinationSettlement(ctx, {
-    toAddress: quote.toAddress,
-    settlementBaseline: null,
-    estimatedOutput: amount,
-    depositIntent: { toChainId: hop.toChain ?? 0, toToken: hop.toToken ?? '' },
-  }, hop);
-
-  await ctx.prisma.transaction.create({
-    data: {
-      id: generateId('tx'),
-      quoteId: quote.id,
-      depositIntentId: quote.depositIntentId,
-      hopIndex: 99, // settlement marker row (relayer settle)
-      chainId: hop.toChain ?? 0,
-      txHash: settleHash,
-      status: 'CONFIRMED',
-      confirmedAt: new Date(),
-    },
-  });
-}
-
-/**
- * Verifies a real bridge/transfer by observing the recipient's destination
- * balance. A source-chain confirmation alone is never treated as settlement.
- */
-async function waitForDestinationSettlement(
-  ctx: WorkerContext,
-  quote: { toAddress: string | null; settlementBaseline: unknown; estimatedOutput: unknown; depositIntent: { toChainId: number; toToken: string } },
-  hop: RouteHopLike,
-): Promise<void> {
-  const chainId = hop.toChain ?? quote.depositIntent.toChainId;
-  const token = hop.toToken ?? quote.depositIntent.toToken;
-  if (!quote.toAddress) throw new Error('Quote has no destination address for settlement verification');
-  const recipient = quote.toAddress as Address;
-  const chain = getChain(chainId);
-  const client = createPublicClient({ chain: viemChain(chainId), transport: http(chain.rpcUrl) });
-  const baseline = quote.settlementBaseline == null ? 0n : BigInt(String(quote.settlementBaseline));
-  const expected = baseline + BigInt(String(quote.estimatedOutput));
-  const deadline = Date.now() + ctx.env.TX_MONITOR_TIMEOUT_MS;
-
-  while (Date.now() < deadline) {
-    try {
-      const balance = token === 'native'
-        ? await client.getBalance({ address: recipient })
-        : isAddress(token)
-          ? await client.readContract({ address: token, abi: ERC20_BALANCE_ABI, functionName: 'balanceOf', args: [recipient] })
-          : undefined;
-      if (balance !== undefined && balance >= expected) return;
-    } catch {
-      // Provider/indexer may lag behind the source transaction. Keep polling
-      // until the configured monitor timeout.
-    }
-    await new Promise((resolve) => setTimeout(resolve, Math.min(ctx.env.TX_MONITOR_POLL_MS, 5_000)));
-  }
-  throw new Error('Destination settlement was not observed before timeout');
+  return depth;
 }
 
 async function triggerFallback(
   ctx: WorkerContext,
-  quote: { id: string; depositIntentId: string; fromChainId: number; fromToken: string; fromAmount: unknown; routePath: unknown },
+  quote: { id: string; depositIntentId: string; providerId?: string | null; fromChainId: number; fromToken: string; fromAmount: unknown; routePath: unknown },
   failedHopIndex: number,
 ): Promise<void> {
   const route = (quote.routePath as unknown as RouteHopLike[]) ?? [];
-  const failedAdapterId = route[failedHopIndex]?.protocol ?? null;
+  // Prefer the failing hop's adapter; fall back to the quote's recorded
+  // provider so an unknown hop never causes a re-quote that re-selects the
+  // exact route that just failed.
+  const failedAdapterId = route[failedHopIndex]?.protocol ?? quote.providerId ?? null;
+
+  const depth = await getFallbackDepth(ctx, quote.id);
+  if (depth >= ctx.env.FALLBACK_MAX_DEPTH) {
+    await failDeposit(ctx, quote.depositIntentId, quote.id, 'FALLBACK_EXHAUSTED');
+    return;
+  }
+  if (!failedAdapterId) {
+    // Without knowing which adapter failed, excluding nothing can loop back
+    // onto the same broken route. Funds are still with the sender pre-burn,
+    // so marking FAILED is safe (docs/stuck-fund-recovery.md).
+    await failDeposit(ctx, quote.depositIntentId, quote.id, 'FAILED_ADAPTER_UNKNOWN');
+    return;
+  }
 
   // Partial-route fallback (PRD §Execution & Fallback): if earlier hops
   // confirmed, funds now sit in an intermediate (chain, token, amount) state.
@@ -419,6 +188,7 @@ async function triggerFallback(
     depositId: quote.depositIntentId,
     quoteId: quote.id,
     failedAdapterId,
+    attempt: depth + 1,
     ...(mid ?? {}),
   });
 }
@@ -429,6 +199,7 @@ export async function processFallback(
     depositId: string;
     quoteId: string;
     failedAdapterId?: string | null;
+    attempt?: number;
     completedHops?: number;
     currentChain?: number;
     currentToken?: string;
@@ -442,6 +213,19 @@ export async function processFallback(
     ctx.prisma.depositIntent.findUnique({ where: { id: depositId }, include: { recipient: true } }),
   ]);
   if (!quote || !deposit) return;
+
+  // Depth guard (PRD §Fallback Safety): a deposit may only chain a bounded
+  // number of fallback re-quotes before it is marked FAILED.
+  const depth = await getFallbackDepth(ctx, quoteId);
+  if (depth >= ctx.env.FALLBACK_MAX_DEPTH) {
+    await failDeposit(ctx, depositId, quoteId, 'FALLBACK_EXHAUSTED');
+    return;
+  }
+  if (!failedAdapterId) {
+    // Excluding nothing risks re-selecting the exact route that just failed.
+    await failDeposit(ctx, depositId, quoteId, 'FAILED_ADAPTER_UNKNOWN');
+    return;
+  }
 
   // Mid-route fallback state (PRD): the chain/token the funds actually sit on.
   const midRoute = job.data.completedHops && job.data.currentChain && job.data.currentToken && job.data.currentAmount
@@ -563,13 +347,13 @@ export async function processFallback(
       ? await getFallbackQuoteFromHop(
           request,
           fallbackDeps,
-          failedAdapterId ? [failedAdapterId] : [],
+          [failedAdapterId],
           midRoute,
         )
       : await getFallbackQuote(
           request,
           fallbackDeps,
-          failedAdapterId ? [failedAdapterId] : [],
+          [failedAdapterId],
         );
   } catch (error) {
     if ((error as { code?: string }).code === 'ROUTE_NOT_FOUND') {
@@ -584,6 +368,16 @@ export async function processFallback(
   const best = result.best;
 
   await ctx.prisma.$transaction(async (tx) => {
+    const providerChain = [...new Set(best.route.map((hop) => hop.protocol).filter((p): p is string => !!p))].join('+');
+    // Normalized Route entity (Next-Gen Routing PRD §Data Model). Created
+    // first; the fallback quote attaches it via `routeId`.
+    const route = await tx.route.create({
+      data: {
+        id: generateId('rt'),
+        steps: stringifyBigInts(best.route) as object,
+        providerChain: providerChain || (best.adapterId ?? null),
+      },
+    });
     await tx.quote.create({
       data: {
         id: newQuoteId,
@@ -606,6 +400,7 @@ export async function processFallback(
         // Provider KPI columns (PRD §Monitoring).
         providerId: best.adapterId ?? null,
         simulated: false,
+        routeId: route.id,
         ...(midRoute
           ? { fallbackFromQuoteId: quoteId, fallbackFromHop: midRoute.completedHops }
           : {}),
@@ -636,7 +431,7 @@ export async function processFallback(
   });
 }
 
-async function failDeposit(
+export async function failDeposit(
   ctx: WorkerContext,
   depositId: string,
   quoteId: string,

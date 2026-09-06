@@ -14,3 +14,21 @@
 .secret-create{justify-content:space-between;flex-wrap:wrap}.secret-create div{display:flex;flex-direction:column;gap:3px}.secret-create div span{font-size:12px;color:#d0bd7a}
 .header-actions{display:flex;align-items:center;gap:14px}.environment-toggle{display:flex;padding:3px;border:1px solid #273348;border-radius:10px;background:#0e1521}.environment-toggle button{padding:7px 12px;background:transparent;color:#8f9bb0;font-size:12px}.environment-toggle button.selected{background:#26364e;color:#fff}.environment-toggle.live button.selected{background:#51302d}.mode-banner{margin:-8px 0 18px;padding:10px 14px;border:1px solid #695528;border-radius:9px;background:#272013;color:#f0d889;font-size:12px}
 .dashboard-message{color:#8f9bb0}
+.status-tag{padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600;text-transform:uppercase}
+.status-tag.settled{background:#133324;color:#5de39d}
+.status-tag.failed{background:#381c1e;color:#ff8e8b}
+.status-tag.settlement_pending{background:#352713;color:#ffcc66}
+.retry-btn{padding:5px 12px;font-size:12px;background:#31425d;color:#fff;border-radius:6px}
+.retry-btn:hover{background:#41587c}
+.chart-wrap{margin-top:20px;padding:16px;border:1px solid #1e2939;border-radius:10px;background:#0b121d}
+.status-chart{width:100%;height:auto;color:#e8edf7}
+.chart-empty{padding:14px;color:#7e8a9e;font-size:13px}
+.provider-bars{display:grid;gap:10px;margin-top:8px}
+.provider-bar{display:grid;grid-template-columns:140px 1fr 34px;gap:10px;align-items:center;font-size:12px;color:#a5b0c1}
+.provider-bar__label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.provider-bar__track{height:10px;border-radius:6px;background:#1c2737;overflow:hidden}
+.provider-bar__fill{height:100%;border-radius:6px;background:#41d88a}
+.provider-bar__value{text-align:right;font-weight:650}
+.link-btn{display:block;width:100%;margin-top:8px;padding:6px 10px;background:transparent;border:1px solid #273348;color:#aeb9c9;font-size:12px}
+.link-btn:hover{border-color:#53ca8a;color:#fff}
+.inline-form{display:grid;grid-template-columns:1fr auto;gap:10px;margin:14px 0}

@@ -37,6 +37,8 @@ const USDT_ADDRESSES: Record<ChainId, string> = {
   59144: '0xa219439258ca9da29e9cc4ce5596924745e12b93',
   56: '0x55d398326f99059fF775485246999027B3197955',
   324: '0x493257fD37EDB34451f62EDf8D2a0C418852bA4C',
+  // Monad's canonical USDT is the bridged "USDT0" (verified on MonadScan).
+  143: '0xe7cd86e13AC4309349F30B3435a9d337750fC82D',
 };
 
 /**
@@ -86,7 +88,7 @@ export const TOKENS: Record<ChainId, TokenInfo[]> = {
   42161: [{ symbol: 'ETH', name: 'Ether', address: null, decimals: 18, native: true }, { symbol: 'USDC', name: 'USD Coin', address: USDC_ADDRESSES[42161], decimals: 6 }, { symbol: 'USDT', name: 'Tether USD', address: USDT_ADDRESSES[42161], decimals: 6 }],
   10: [{ symbol: 'ETH', name: 'Ether', address: null, decimals: 18, native: true }, { symbol: 'USDC', name: 'USD Coin', address: USDC_ADDRESSES[10], decimals: 6 }, { symbol: 'USDT', name: 'Tether USD', address: USDT_ADDRESSES[10], decimals: 6 }],
   59144: [{ symbol: 'ETH', name: 'Ether', address: null, decimals: 18, native: true }, { symbol: 'USDC', name: 'USD Coin', address: USDC_ADDRESSES[59144], decimals: 6 }, { symbol: 'USDT', name: 'Tether USD', address: USDT_ADDRESSES[59144], decimals: 6 }],
-  143: [{ symbol: 'MON', name: 'Monad', address: null, decimals: 18, native: true }, { symbol: 'USDC', name: 'USD Coin', address: USDC_ADDRESSES[143], decimals: 6 }],
+  143: [{ symbol: 'MON', name: 'Monad', address: null, decimals: 18, native: true }, { symbol: 'USDC', name: 'USD Coin', address: USDC_ADDRESSES[143], decimals: 6 }, { symbol: 'USDT', name: 'Tether USD', address: USDT_ADDRESSES[143], decimals: 6 }],
   56: [
     { symbol: 'BNB', name: 'BNB', address: null, decimals: 18, native: true },
     { symbol: 'USDC', name: 'USD Coin', address: USDC_ADDRESSES[56], decimals: 18 },

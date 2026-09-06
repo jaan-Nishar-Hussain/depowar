@@ -1,6 +1,7 @@
 import { encodeFunctionData, type Address } from 'viem';
 import type { CandidateRoute, QuoteRequest, RouteHop, TransactionRequest } from '../../types';
 import type { RouteProvider } from '../types';
+import { executeRoute } from '../../execute';
 
 const ERC20_APPROVE_ABI = [{
   type: 'function', name: 'approve', stateMutability: 'nonpayable',
@@ -210,6 +211,7 @@ export function createLifiRouteProvider(options: LifiRouteProviderOptions = {}):
         reliability: 0.95,
         liquidityScore: 0.9,
         priceImpactBps: Number.isFinite(impact) ? (impact < 1 ? impact * 10_000 : impact) : undefined,
+        riskScore: 0.1,
         available: true,
         providerMetadata: {
           provider: id,
@@ -227,7 +229,13 @@ export function createLifiRouteProvider(options: LifiRouteProviderOptions = {}):
     }
   }
 
-  return { id, getCandidateRoutes };
+  return {
+    id,
+    getCandidateRoutes,
+    // LI.FI routes normalize to executable hop transactions; execution
+    // delegates to the shared engine executor (PRD §Adapter Interfaces).
+    executeRoute: (route, deps) => executeRoute(route, deps),
+  };
 }
 
 async function buildAdvancedCandidate(
@@ -292,6 +300,7 @@ async function buildAdvancedCandidate(
     gasCost: (route.steps ?? []).reduce((n, s) => n + sumAmounts(s.estimate?.gasCosts), 0n),
     reliability: 0.95,
     liquidityScore: 0.9,
+    riskScore: 0.1,
     available: true,
     providerMetadata: { provider: id, quoteId: route.id ?? '', routeType: 'advanced', ...(usedPublicFallback ? { apiKeyFallback: true } : {}), statusUrl: `${baseUrl}/status` },
     adapterId: id,

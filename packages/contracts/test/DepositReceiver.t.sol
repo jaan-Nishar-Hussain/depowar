@@ -5,6 +5,14 @@ import {Test} from "forge-std/Test.sol";
 import {DepositReceiver} from "../src/DepositReceiver.sol";
 import {MockERC20} from "../src/mocks/MockERC20.sol";
 
+/// Minimal contract owner used to prove contract-type settlement (PRD test
+/// case: "Settlement to an EOA vs. settlement to a contract call").
+contract TokenHolder {
+    function balanceOf(address token) external view returns (uint256) {
+        return MockERC20(token).balanceOf(address(this));
+    }
+}
+
 contract DepositReceiverTest is Test {
     DepositReceiver receiver;
     MockERC20 token;
@@ -62,5 +70,23 @@ contract DepositReceiverTest is Test {
 
         assertEq(token.balanceOf(address(receiver)), 0, "receiver must never retain funds");
         assertEq(token.balanceOf(owner), amount, "owner must receive the exact amount");
+    }
+
+    function test_ContractSettlementForwardsToContractOwner() public {
+        // Contract-type settlement (PRD §Dynamic Settlement Configuration):
+        // the configured destination is a smart contract, not an EOA.
+        TokenHolder holder = new TokenHolder();
+        DepositReceiver contractReceiver = new DepositReceiver(address(holder));
+        token.mint(sender, 123_456e6);
+        vm.prank(sender);
+        token.approve(address(contractReceiver), type(uint256).max);
+
+        vm.prank(sender);
+        contractReceiver.deposit(address(token), 123_456e6);
+
+        assertEq(
+            token.balanceOf(address(holder)), 123_456e6, "contract owner must receive the deposit"
+        );
+        assertEq(token.balanceOf(address(contractReceiver)), 0, "receiver must not retain funds");
     }
 }

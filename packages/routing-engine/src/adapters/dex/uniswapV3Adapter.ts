@@ -1,6 +1,7 @@
 import { encodeFunctionData, type Address, type PublicClient } from 'viem';
 import { effectiveSlippage, type QuoteRequest, type TransactionRequest } from '../../types';
 import type { SwapAdapter, SwapQuote } from '../types';
+import { estimatePriceImpactBps } from '../priceImpact';
 
 const QUOTER_V2_ABI = [{
   type: 'function', name: 'quoteExactInputSingle', stateMutability: 'nonpayable',
@@ -101,13 +102,32 @@ export function createUniswapV3Adapter(options: UniswapV3AdapterOptions): SwapAd
     } catch {
       // Gas is optional for quoting; route scoring still uses output/slippage.
     }
+    // Price impact for the winning fee tier: compare the marginal (0.1% size)
+    // rate with the full-size rate from the quoter.
+    const impactBps = await estimatePriceImpactBps(async (amount: bigint) => {
+      const result = await options.publicClient.simulateContract({
+        address: options.quoterAddress,
+        abi: QUOTER_V2_ABI,
+        functionName: 'quoteExactInputSingle',
+        args: [{
+          tokenIn: req.tokenIn as Address,
+          tokenOut: req.tokenOut as Address,
+          amountIn: amount,
+          fee: best.feeTier,
+          sqrtPriceLimitX96: 0n,
+        }],
+      });
+      return (result.result as readonly [bigint, bigint, number, bigint])[0];
+    }, req.amountIn);
+
     return {
       amountOut: best.amountOut,
       fee: 0n,
       timeSeconds: 30,
       reliability: 0.995,
       liquidityScore: 0.9,
-      priceImpactBps: 0,
+      priceImpactBps: impactBps,
+      riskScore: 0.02,
       gasCost,
       available: true,
       metadata: { poolFee: best.feeTier, protocol: 'uniswap-v3' },
