@@ -111,19 +111,25 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
   const isSigning = status === 'signing';
   const supportedChains = config.supportedSourceChains ?? SUPPORTED_MAINNET_CHAINS;
   const toTokenSymbol = config.toTokenSymbol ?? 'USDC';
-  const [searchTerm, setSearchTerm] = useState('');
+  const [chainSearch, setChainSearch] = useState('');
+  const [tokenSearch, setTokenSearch] = useState('');
   const baseSourceToken = config.fromTokenByChain?.[chain?.id ?? 0] ?? config.fromToken ?? 'native';
   const tokenOptions = config.supportedTokensByChain?.[chain?.id ?? 0]?.filter((token) => token.address) ?? [{ symbol: tokenLabel(baseSourceToken), address: baseSourceToken }];
   const [selectedToken, setSelectedToken] = useState<string>();
   const sourceToken = selectedToken ?? tokenOptions[0]?.address ?? baseSourceToken;
   const sourceSymbol = tokenOptions.find((token) => token.address.toLowerCase() === sourceToken.toLowerCase())?.symbol ?? tokenLabel(sourceToken);
-  const query = searchTerm.trim().toLowerCase();
-  const filteredChains = query
-    ? supportedChains.filter((id) => chainLabel(id).toLowerCase().includes(query))
+  const [chainFilter, setChainFilter] = useState<number | null>(null); // null = All Chains
+  const chainQ = chainSearch.trim().toLowerCase();
+  const tokenQ = tokenSearch.trim().toLowerCase();
+  const filteredChains = chainQ
+    ? supportedChains.filter((id) => chainLabel(id).toLowerCase().includes(chainQ))
     : supportedChains;
-  const filteredTokens = query
-    ? tokenOptions.filter((token) => token.symbol.toLowerCase().includes(query) || token.address.toLowerCase().includes(query))
+  const tokensForChain = chainFilter !== null
+    ? (config.supportedTokensByChain?.[chainFilter]?.filter(t => t.address) ?? [])
     : tokenOptions;
+  const filteredTokens = tokenQ
+    ? tokensForChain.filter((token) => token.symbol.toLowerCase().includes(tokenQ) || token.address.toLowerCase().includes(tokenQ))
+    : tokensForChain;
 
   useEffect(() => {
     setSelectedToken(undefined);
@@ -422,34 +428,115 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
           })()}
 
           {selectorOpen && (
-            <div className="pm-selector-backdrop" role="presentation" onClick={() => setSelectorOpen(false)}>
+            <div className="pm-selector-backdrop" role="presentation" onClick={() => { setSelectorOpen(false); setChainSearch(''); setTokenSearch(''); setChainFilter(null); }}>
               <section className="pm-selector" role="dialog" aria-modal="true" aria-labelledby="pm-selector-title" onClick={(event) => event.stopPropagation()}>
+
+                {/* Header */}
                 <div className="pm-selector__header">
-                  <button type="button" className="pm-selector__back" aria-label="Close selector" onClick={() => setSelectorOpen(false)}>‹</button>
+                  <button type="button" className="pm-selector__back" aria-label="Close selector" onClick={() => { setSelectorOpen(false); setChainSearch(''); setTokenSearch(''); setChainFilter(null); }}>‹</button>
                   <h2 id="pm-selector-title">Select Token</h2>
-                  <span className="pm-selector__mode">☾</span>
+                  <button type="button" className="pm-selector__mode" aria-label="Toggle dark mode">☾</button>
                 </div>
-                <div className="pm-selector__search"><span>⌕</span><input aria-label="Search chain or token" placeholder="Search chain or token" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} /></div>
+
+                {/* Dual search row */}
+                <div className="pm-selector__searches">
+                  <div className="pm-selector__search-pill">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                    <input
+                      aria-label="Search chain"
+                      placeholder="Chain"
+                      value={chainSearch}
+                      onChange={(e) => setChainSearch(e.target.value)}
+                    />
+                  </div>
+                  <div className="pm-selector__search-pill pm-selector__search-pill--active">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                    <input
+                      aria-label="Search token"
+                      placeholder="Token"
+                      value={tokenSearch}
+                      onChange={(e) => setTokenSearch(e.target.value)}
+                    />
+                  </div>
+                </div>
+
                 <div className="pm-selector__columns">
+                  {/* Left – Chains */}
                   <div className="pm-selector__chains">
-                    <div className="pm-selector__section-title">Popular chains</div>
+                    {/* All Chains pill */}
+                    <button
+                      type="button"
+                      className={`pm-all-chains ${chainFilter === null ? 'pm-all-chains--active' : ''}`}
+                      onClick={() => setChainFilter(null)}
+                    >
+                      <span className="pm-all-chains__icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                      </span>
+                      All Chains
+                    </button>
+
+                    <div className="pm-selector__section-title">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>
+                      Popular chains
+                    </div>
+
                     {filteredChains.map((chainId) => (
-                      <button key={chainId} type="button" className={`pm-chain-option ${chain?.id === chainId ? 'pm-chain-option--active' : ''}`} onClick={() => { switchChain?.({ chainId }); setSelectorOpen(false); }}>
+                      <button
+                        key={chainId}
+                        type="button"
+                        className={`pm-chain-option ${chainFilter === chainId ? 'pm-chain-option--active' : ''}`}
+                        onClick={() => setChainFilter(chainFilter === chainId ? null : chainId)}
+                      >
                         <span className={`pm-chain-option__icon pm-chain-option__icon--${chainId}`}><NetworkIcon chainId={chainId} size={32} /></span>
                         {chainLabel(chainId)}
                       </button>
                     ))}
-                    {filteredChains.length === 0 && <div className="pm-selector__empty">No chains match "{searchTerm}"</div>}
+                    {filteredChains.length === 0 && <div className="pm-selector__empty">No chains match &ldquo;{chainSearch}&rdquo;</div>}
                   </div>
+
+                  {/* Right – Tokens */}
                   <div className="pm-selector__tokens">
-                    <div className="pm-selector__section-title">Your tokens</div>
-                    {filteredTokens.map((token) => (
-                      <button key={token.address} type="button" className={`pm-token-option ${token.address.toLowerCase() === sourceToken.toLowerCase() ? 'pm-token-option--active' : ''}`} onClick={() => { setSelectedToken(token.address); setSelectorOpen(false); }}>
-                        <span className={`pm-token-option__icon pm-token-option__icon--${token.symbol.toLowerCase()}`}><TokenIcon symbol={token.symbol} size={40} /></span>
-                        <span><strong>{token.symbol}</strong><small>{token.decimals ?? 6} decimals · {chainLabel(chain.id)}</small></span>
-                      </button>
-                    ))}
-                    {filteredTokens.length === 0 && <div className="pm-selector__empty">No tokens match "{searchTerm}"</div>}
+                    <div className="pm-selector__section-title">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+                      Your tokens
+                    </div>
+
+                    {filteredTokens.map((token) => {
+                      const displayChainId = chainFilter ?? chain.id;
+                      const isActive = token.address.toLowerCase() === sourceToken.toLowerCase();
+                      return (
+                        <button
+                          key={token.address}
+                          type="button"
+                          className={`pm-token-option ${isActive ? 'pm-token-option--active' : ''}`}
+                          onClick={() => {
+                            if (chainFilter !== null && chainFilter !== chain.id) {
+                              switchChain?.({ chainId: chainFilter });
+                            }
+                            setSelectedToken(token.address);
+                            setSelectorOpen(false);
+                            setChainSearch('');
+                            setTokenSearch('');
+                            setChainFilter(null);
+                          }}
+                        >
+                          {/* Stacked icon: token + chain badge */}
+                          <span className="pm-token-option__icon-wrap">
+                            <span className={`pm-token-option__icon pm-token-option__icon--${token.symbol.toLowerCase()}`}>
+                              <TokenIcon symbol={token.symbol} size={40} />
+                            </span>
+                            <span className="pm-token-option__chain-badge">
+                              <NetworkIcon chainId={displayChainId} size={16} />
+                            </span>
+                          </span>
+                          <span className="pm-token-option__info">
+                            <strong>{token.symbol}</strong>
+                            <small>{chainLabel(displayChainId)}</small>
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {filteredTokens.length === 0 && <div className="pm-selector__empty">No tokens match &ldquo;{tokenSearch || chainSearch}&rdquo;</div>}
                   </div>
                 </div>
               </section>

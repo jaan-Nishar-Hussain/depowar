@@ -460,3 +460,180 @@
 @media (prefers-reduced-motion: reduce) {
   .pm-result, .pm-success-mark, .pm-confetti i, .pm-selector { animation: none; }
 }
+
+/* ─── Selector redesign additions ───────────────────────────────────── */
+
+/* Header: centered title */
+.pm-selector__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.pm-selector__header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  flex: 1;
+  text-align: center;
+}
+.pm-selector__back {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1.5px solid var(--pm-border);
+  border-radius: 50%;
+  background: #fff;
+  color: #343b49;
+  font-size: 22px;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.pm-selector__mode {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 24px;
+  border: 1.5px solid var(--pm-border);
+  border-radius: 14px;
+  background: #fff;
+  color: #a1a8b5;
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* Dual search row */
+.pm-selector__searches {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.pm-selector__search-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1.5px solid var(--pm-border);
+  border-radius: var(--pm-radius-pill);
+  background: var(--pm-surface);
+  color: var(--pm-muted);
+  height: 44px;
+}
+.pm-selector__search-pill--active {
+  border-color: var(--pm-blue);
+  background: #f0f5ff;
+}
+.pm-selector__search-pill input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 14px;
+  color: var(--pm-fg);
+  font-family: inherit;
+}
+.pm-selector__search-pill input::placeholder { color: var(--pm-muted); }
+
+/* All Chains button */
+.pm-all-chains {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 13px;
+  margin-bottom: 12px;
+  border: 1.5px solid var(--pm-border);
+  border-radius: 14px;
+  background: var(--pm-bg);
+  color: var(--pm-fg);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  transition: background 0.12s, border-color 0.12s;
+}
+.pm-all-chains:hover { background: var(--pm-surface); }
+.pm-all-chains--active {
+  background: var(--pm-surface);
+  border-color: #c5d6f0;
+}
+.pm-all-chains__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #eef2ff;
+  color: var(--pm-blue);
+  flex-shrink: 0;
+}
+
+/* Section title with icon */
+.pm-selector__section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  color: var(--pm-blue);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* Token option: stacked icon with chain badge */
+.pm-token-option__icon-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 46px;
+  height: 46px;
+}
+.pm-token-option__icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  font-size: 26px;
+}
+.pm-token-option__chain-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--pm-bg);
+  border: 1.5px solid var(--pm-bg);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  overflow: hidden;
+}
+.pm-token-option__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pm-token-option__info strong { font-size: 15px; font-weight: 700; color: var(--pm-fg); }
+.pm-token-option__info small { font-size: 12px; color: var(--pm-muted); }
+
+/* Overwrite old token option size to match */
+.pm-token-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 10px 13px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--pm-surface);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, outline 0.12s;
+}
+.pm-token-option:hover { background: #edf5ff; }
+.pm-token-option--active { background: #edf5ff; outline: 1.5px solid #b7d0f6; }
