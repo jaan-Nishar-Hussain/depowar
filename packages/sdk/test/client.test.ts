@@ -26,6 +26,9 @@ const server = setupServer(
     }),
   ),
   http.get(`${BASE}/v1/status`, () => HttpResponse.json({ id: 'dep_1', status: 'SETTLED', toChainId: 84532, toToken: 'USDC', recipient: { walletAddress: '0x0', settlementType: 'EOA' }, quotes: [], transactions: [] })),
+  http.get(`${BASE}/v1/quotes/qt_1`, () => HttpResponse.json({ id: 'qt_1', depositIntentId: 'dep_1', estimatedOutput: '1980000', status: 'ACTIVE' })),
+  http.get(`${BASE}/v1/transactions/tx_1`, () => HttpResponse.json({ id: 'tx_1', txHash: '0x123', status: 'CONFIRMED' })),
+  http.get(`${BASE}/v1/transactions`, () => HttpResponse.json([{ id: 'tx_1', txHash: '0x123', status: 'CONFIRMED' }])),
   http.get(`${BASE}/v1/chains`, () => HttpResponse.json([{ id: 11155111, name: 'Ethereum Sepolia', testnet: true }])),
 );
 
@@ -52,6 +55,21 @@ describe('PayMeshClient', () => {
     expect(quote.quoteId).toBe('qt_1');
     expect(quote.hopTransactionRequests).toHaveLength(1);
     expect(quote.estimatedOutput).toBe('1980000');
+  });
+
+  it('inspects a quote by ID', async () => {
+    const quote = await client.getQuoteById('qt_1') as unknown as { id: string; status: string };
+    expect(quote.id).toBe('qt_1');
+    expect(quote.status).toBe('ACTIVE');
+  });
+
+  it('inspects a transaction by ID and lists by intent', async () => {
+    const tx = await client.getTransaction('tx_1') as unknown as { id: string; status: string };
+    expect(tx.id).toBe('tx_1');
+    expect(tx.status).toBe('CONFIRMED');
+
+    const txs = await client.listTransactions('dep_1');
+    expect(txs).toHaveLength(1);
   });
 
   it('polls status until settled', async () => {

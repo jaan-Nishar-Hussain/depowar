@@ -50,18 +50,20 @@ describe('on-chain routing (Anvil + mock contracts)', () => {
       { swapAdapters: [swapAdapter], bridgeAdapters: [] },
     );
 
-    expect(best.route).toHaveLength(2);
-    expect(best.route[0]!.type).toBe('swap');
-    expect(best.route[1]!.type).toBe('transfer');
+    expect(best.route).toHaveLength(3);
+    expect(best.route[0]!.type).toBe('approval');
+    expect(best.route[1]!.type).toBe('swap');
+    expect(best.route[2]!.type).toBe('transfer');
     expect(best.transactionRequest).toBeDefined();
-    expect(best.hopTransactionRequests).toHaveLength(2);
+    expect(best.hopTransactionRequests).toHaveLength(3);
 
-    await src.walletClient.writeContract({
-      address: src.mockWeth,
-      abi: erc20Abi,
-      functionName: 'approve',
-      args: [src.mockDex, parseEther('10')],
+    const approvalTx = best.hopTransactionRequests![0]!;
+    const approvalHash = await src.walletClient.sendTransaction({
+      to: approvalTx.to,
+      data: approvalTx.data,
+      value: approvalTx.value,
     });
+    await src.publicClient.waitForTransactionReceipt({ hash: approvalHash });
 
     const before = (await src.publicClient.readContract({
       address: src.mockUsdc,
@@ -70,8 +72,8 @@ describe('on-chain routing (Anvil + mock contracts)', () => {
       args: [src.deployer],
     })) as bigint;
 
-    const tx = best.transactionRequest!;
-    const hash = await src.walletClient.sendTransaction({ to: tx.to, data: tx.data, value: tx.value });
+    const swapTx = best.hopTransactionRequests![1]!;
+    const hash = await src.walletClient.sendTransaction({ to: swapTx.to, data: swapTx.data, value: swapTx.value });
     await src.publicClient.waitForTransactionReceipt({ hash });
 
     const after = (await src.publicClient.readContract({
@@ -108,11 +110,13 @@ describe('on-chain routing (Anvil + mock contracts)', () => {
       { swapAdapters: [swapAdapter], bridgeAdapters: [bridgeAdapter] },
     );
 
-    expect(best.route).toHaveLength(2);
-    expect(best.route[0]!.type).toBe('swap');
-    expect(best.route[1]!.type).toBe('bridge');
-    expect(best.route[1]!.toChain).toBe(31338);
-    expect(best.transactionRequest!.to).toBe(src.mockDex);
+    expect(best.route).toHaveLength(4);
+    expect(best.route[0]!.type).toBe('approval');
+    expect(best.route[1]!.type).toBe('swap');
+    expect(best.route[2]!.type).toBe('approval');
+    expect(best.route[3]!.type).toBe('bridge');
+    expect(best.route[3]!.toChain).toBe(31338);
+    expect(best.hopTransactionRequests![1]!.to).toBe(src.mockDex);
   });
 
   it('returns a direct ERC20 transfer when chain and token match', async () => {

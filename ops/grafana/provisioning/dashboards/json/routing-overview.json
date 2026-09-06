@@ -1,0 +1,95 @@
+{
+  "title": "PayMesh Routing Overview",
+  "uid": "paymesh-routing-overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Quote outcomes (rate/5m)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(routing_quotes_total[5m]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Average quote latency (ms)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(increase(routing_quote_latency_ms_sum[5m])) / sum(increase(routing_quote_latency_ms_count[5m]))",
+          "legendFormat": "avg latency ms"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Routes chosen by adapter (rate/15m)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum by (adapter) (rate(routing_routes_chosen_total[15m]))",
+          "legendFormat": "{{adapter}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Routes discarded by reason (rate/15m)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(routing_routes_discarded_total[15m]))",
+          "legendFormat": "{{reason}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Fallback re-quotes (rate/15m)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "sum by (from_hop, outcome) (rate(routing_fallback_requotes_total[15m]))",
+          "legendFormat": "hop {{from_hop}} / {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Route-not-found ratio (15m)",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "sum(increase(routing_quotes_total{outcome=\"route_not_found\"}[15m])) / sum(increase(routing_quotes_total[15m]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.05 },
+              { "color": "red", "value": 0.1 }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

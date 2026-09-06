@@ -23,6 +23,8 @@ const USDC_ADDRESSES: Record<ChainId, string> = {
   10: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
   59144: '0x176211869cA2b568f2A7D4EE941E073a821EE1ff',
   143: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
+  56: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
+  324: '0x1d17CBcF0D6D143135aE902365D2E5e2A16538D4',
 };
 
 const USDT_ADDRESSES: Record<ChainId, string> = {
@@ -33,6 +35,8 @@ const USDT_ADDRESSES: Record<ChainId, string> = {
   42161: '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9',
   10: '0x94b008aA00579c1307B0EF2c499Ad98a8ce58e58',
   59144: '0xa219439258ca9da29e9cc4ce5596924745e12b93',
+  56: '0x55d398326f99059fF775485246999027B3197955',
+  324: '0x493257fD37EDB34451f62EDf8D2a0C418852bA4C',
 };
 
 /**
@@ -83,6 +87,16 @@ export const TOKENS: Record<ChainId, TokenInfo[]> = {
   10: [{ symbol: 'ETH', name: 'Ether', address: null, decimals: 18, native: true }, { symbol: 'USDC', name: 'USD Coin', address: USDC_ADDRESSES[10], decimals: 6 }, { symbol: 'USDT', name: 'Tether USD', address: USDT_ADDRESSES[10], decimals: 6 }],
   59144: [{ symbol: 'ETH', name: 'Ether', address: null, decimals: 18, native: true }, { symbol: 'USDC', name: 'USD Coin', address: USDC_ADDRESSES[59144], decimals: 6 }, { symbol: 'USDT', name: 'Tether USD', address: USDT_ADDRESSES[59144], decimals: 6 }],
   143: [{ symbol: 'MON', name: 'Monad', address: null, decimals: 18, native: true }, { symbol: 'USDC', name: 'USD Coin', address: USDC_ADDRESSES[143], decimals: 6 }],
+  56: [
+    { symbol: 'BNB', name: 'BNB', address: null, decimals: 18, native: true },
+    { symbol: 'USDC', name: 'USD Coin', address: USDC_ADDRESSES[56], decimals: 18 },
+    { symbol: 'USDT', name: 'Tether USD', address: USDT_ADDRESSES[56], decimals: 18 },
+  ],
+  324: [
+    { symbol: 'ETH', name: 'Ether', address: null, decimals: 18, native: true },
+    { symbol: 'USDC', name: 'USD Coin', address: USDC_ADDRESSES[324], decimals: 6 },
+    { symbol: 'USDT', name: 'Tether USD', address: USDT_ADDRESSES[324], decimals: 6 },
+  ],
 };
 
 export function getTokens(chainId: ChainId): TokenInfo[] {

@@ -28,3 +28,34 @@ export function estimateGasUnits(hopType: 'swap' | 'bridge' | 'transfer' | 'appr
     case 'transfer': return 50_000n;
   }
 }
+
+export interface GasPriceOracle {
+  getGasPrice(): Promise<bigint>;
+}
+
+/**
+ * Estimates gas cost in wei for a hop type, querying the live network
+ * gas price via an RPC client if supplied, with a safe 20 gwei fallback.
+ */
+export async function estimateHopGasCost(
+  hopType: 'swap' | 'bridge' | 'transfer' | 'approval',
+  clientOrOracle?: GasPriceOracle,
+): Promise<bigint> {
+  const units = estimateGasUnits(hopType);
+  if (clientOrOracle?.getGasPrice) {
+    try {
+      const gasPrice = await clientOrOracle.getGasPrice();
+      return units * gasPrice;
+    } catch {
+      // Gracefully fall back to default
+    }
+  }
+  return units * 20_000_000_000n;
+}
+
+/**
+ * Estimates total gas units across an entire route hop sequence.
+ */
+export function estimateRouteGasUnits(hops: Array<{ type: 'swap' | 'bridge' | 'transfer' | 'approval' }>): bigint {
+  return hops.reduce((acc, hop) => acc + estimateGasUnits(hop.type), 0n);
+}

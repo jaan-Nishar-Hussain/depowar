@@ -86,6 +86,8 @@ export function listChains(): ChainInfo[] {
     { id: 10, name: 'OP Mainnet', rpcUrl: env.OPTIMISM_MAINNET_RPC, explorerUrl: 'https://optimistic.etherscan.io', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, testnet: false },
     { id: 59144, name: 'Linea Mainnet', rpcUrl: env.LINEA_MAINNET_RPC, explorerUrl: 'https://lineascan.build', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, testnet: false },
     { id: 143, name: 'Monad', rpcUrl: env.MONAD_MAINNET_RPC, explorerUrl: 'https://monadscan.com', nativeCurrency: { name: 'Monad', symbol: 'MON', decimals: 18 }, testnet: false },
+    { id: 56, name: 'BNB Smart Chain', rpcUrl: env.BNB_MAINNET_RPC, explorerUrl: 'https://bscscan.com', nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 }, testnet: false },
+    { id: 324, name: 'zkSync Era', rpcUrl: env.ZKSYNC_MAINNET_RPC, explorerUrl: 'https://era.zksync.network', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, testnet: false },
   ];
 }
 

@@ -25,4 +25,41 @@ export class StatusService {
     }
     return deposit;
   }
+
+  async getTransactionById(clientId: string, transactionId: string): Promise<unknown> {
+    const tx = await this.prisma.transaction.findFirst({
+      where: { id: transactionId, depositIntent: { clientId } },
+      include: {
+        depositIntent: true,
+        quote: true,
+      },
+    });
+    if (!tx) {
+      throw new PayMeshError(
+        'TRANSACTION_NOT_FOUND',
+        `Transaction ${transactionId} not found`,
+        'The transaction does not exist.',
+        404,
+      );
+    }
+    return tx;
+  }
+
+  async listTransactionsByIntent(clientId: string, intentId: string): Promise<unknown> {
+    const deposit = await this.prisma.depositIntent.findFirst({
+      where: { id: intentId, clientId },
+    });
+    if (!deposit) {
+      throw new PayMeshError(
+        'DEPOSIT_NOT_FOUND',
+        `Deposit intent ${intentId} not found`,
+        'The deposit intent does not exist.',
+        404,
+      );
+    }
+    return this.prisma.transaction.findMany({
+      where: { depositIntentId: intentId },
+      orderBy: { hopIndex: 'asc' },
+    });
+  }
 }

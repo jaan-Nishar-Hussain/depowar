@@ -1,0 +1,49 @@
+groups:
+  - name: paymesh-routing
+    rules:
+      - alert: RoutingHighRouteNotFoundRate
+        expr: |
+          (
+            sum(increase(routing_quotes_total{outcome="route_not_found"}[15m]))
+            /
+            sum(increase(routing_quotes_total[15m]))
+          ) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'More than 10% of quote requests found no route in the last 15m'
+          description: 'Check provider health (RPCs, LI.FI/1inch/Across API keys, CCTP Iris) and recent config changes.'
+
+      - alert: RoutingQuoteLatencyHigh
+        expr: |
+          (
+            sum(increase(routing_quote_latency_ms_sum[15m]))
+            /
+            sum(increase(routing_quote_latency_ms_count[15m]))
+          ) > 5000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Average quote latency exceeded 5s over the last 15m'
+          description: 'A slow or timing-out provider is likely delaying the whole quote fan-out.'
+
+      - alert: RoutingFallbackSpike
+        expr: |
+          sum(increase(routing_fallback_requotes_total[15m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'More than 5 fallback re-quotes in 15 minutes'
+          description: 'Mid-route failures are unusually frequent; check the failing adapter/bridge in routing_routes_discarded_total.'
+
+      - alert: PaymeshApiUnreachable
+        expr: up{job="paymesh-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Prometheus cannot scrape the PayMesh API /v1/metrics endpoint'
+          description: 'The API process may be down, or the metrics endpoint is unreachable from Prometheus.'

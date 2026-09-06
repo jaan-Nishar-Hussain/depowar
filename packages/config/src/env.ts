@@ -24,6 +24,8 @@ const EnvSchema = z.object({
   OPTIMISM_MAINNET_RPC: z.string().default('https://mainnet.optimism.io'),
   LINEA_MAINNET_RPC: z.string().default('https://rpc.linea.build'),
   MONAD_MAINNET_RPC: z.string().default('https://rpc.monad.xyz'),
+  BNB_MAINNET_RPC: z.string().default('https://bsc-dataseed.binance.org'),
+  ZKSYNC_MAINNET_RPC: z.string().default('https://mainnet.era.zksync.io'),
   API_KEY_SECRET: z.string().default('dev-secret'),
   AUTH_JWT_SECRET: z.string().default('dev-auth-secret-change-me'),
   GOOGLE_CLIENT_ID: z.string().default(''),

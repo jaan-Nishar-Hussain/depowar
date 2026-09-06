@@ -2,7 +2,12 @@ import { Inject, Injectable } from '@nestjs/common';
 import { createPublicClient, http, isAddress, type Address, type Hex } from 'viem';
 import { AppEnv, getChain, QUOTE_TTL_SECONDS } from '@paymesh/config';
 import { Prisma, generateId } from '@paymesh/db';
-import { createPrivateKeySigner, type QuoteRequest, type TransactionRequest } from '@paymesh/routing-engine';
+import {
+  createPrivateKeySigner,
+  simulateFirstTransaction,
+  type QuoteRequest,
+  type TransactionRequest,
+} from '@paymesh/routing-engine';
 import { PrismaService } from '../prisma/prisma.service';
 import { PayMeshError } from '../common/errors';
 import { stringifyBigInts } from '../common/serialize';
@@ -87,6 +92,28 @@ export class QuoteService {
     const expiresAt = new Date(Date.now() + QUOTE_TTL_SECONDS * 1000);
     const quoteId = generateId('qt');
 
+    let isSimulated = false;
+    if (this.env.SIMULATE_QUOTES && best.transactionRequest) {
+      try {
+        const fromChainInfo = getChain(request.fromChain);
+        const sourceClient = createPublicClient({
+          chain: viemChain(request.fromChain),
+          transport: http(fromChainInfo.rpcUrl),
+        });
+        const simResult = await simulateFirstTransaction(best, async (tx) => {
+          return sourceClient.call({
+            account: request.fromAddress,
+            to: tx.to,
+            data: tx.data as Hex,
+            value: tx.value ? BigInt(tx.value) : undefined,
+          });
+        });
+        isSimulated = simResult.ok;
+      } catch {
+        isSimulated = false;
+      }
+    }
+
     await this.prisma.$transaction(async (tx) => {
       await tx.quote.create({
         data: {
@@ -111,7 +138,7 @@ export class QuoteService {
           status: 'ACTIVE',
           expiresAt,
           providerId: best.adapterId ?? null,
-          simulated: this.env.SIMULATE_QUOTES,
+          simulated: isSimulated || this.env.SIMULATE_QUOTES,
           score: best.score ?? null,
           // Losing candidates' summary metrics only (never their transaction
           // data), so a historical quote can be audited against what it beat
@@ -437,5 +464,60 @@ export class QuoteService {
       // verification remains enabled and will use the zero baseline fallback.
       return undefined;
     }
+  }
+
+  async getQuoteById(clientId: string, quoteId: string) {
+    const quote = await this.prisma.quote.findFirst({
+      where: { id: quoteId, depositIntent: { clientId } },
+      include: {
+        depositIntent: true,
+        transactions: { orderBy: { hopIndex: 'asc' } },
+      },
+    });
+    if (!quote) {
+      throw new PayMeshError('QUOTE_NOT_FOUND', `Quote ${quoteId} not found`, 'The quote does not exist.', 404);
+    }
+    return quote;
+  }
+
+  async getQuoteByDepositIntentId(clientId: string, depositIntentId: string) {
+    const quote = await this.prisma.quote.findFirst({
+      where: { depositIntentId, depositIntent: { clientId } },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        depositIntent: true,
+        transactions: { orderBy: { hopIndex: 'asc' } },
+      },
+    });
+    if (!quote) {
+      throw new PayMeshError(
+        'QUOTE_NOT_FOUND',
+        `No quote found for deposit ${depositIntentId}`,
+        'The quote does not exist.',
+        404,
+      );
+    }
+    return quote;
+  }
+
+  async executeDepositIntent(clientId: string, depositIntentId: string) {
+    const quote = await this.prisma.quote.findFirst({
+      where: {
+        depositIntentId,
+        depositIntent: { clientId },
+        status: 'ACTIVE',
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!quote) {
+      throw new PayMeshError(
+        'ACTIVE_QUOTE_NOT_FOUND',
+        `No active quote found for deposit ${depositIntentId}`,
+        'Please request a quote first.',
+        404,
+      );
+    }
+    return this.executeServerCustody(clientId, quote.id);
   }
 }

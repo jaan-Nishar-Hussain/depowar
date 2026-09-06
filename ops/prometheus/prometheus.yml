@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alert-rules.yml
+
+scrape_configs:
+  # Scrapes the API's Prometheus-format routing KPIs (Next-Gen Routing PRD
+  # §Monitoring). `host.docker.internal` reaches the API when it's run on the
+  # host via `pnpm dev:api` rather than inside this compose file.
+  - job_name: paymesh-api
+    metrics_path: /v1/metrics
+    static_configs:
+      - targets: ['host.docker.internal:4000']
+        labels:
+          service: paymesh-api

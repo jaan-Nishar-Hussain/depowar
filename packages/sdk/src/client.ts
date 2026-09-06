@@ -186,4 +186,16 @@ export class PayMeshClient {
       await new Promise((r) => setTimeout(r, intervalMs));
     }
   }
+
+  getQuoteById(quoteId: string): Promise<QuoteResult> {
+    return this.request<QuoteResult>(`/quotes/${encodeURIComponent(quoteId)}`);
+  }
+
+  getTransaction(transactionId: string): Promise<unknown> {
+    return this.request(`/transactions/${encodeURIComponent(transactionId)}`);
+  }
+
+  listTransactions(intentId: string): Promise<unknown[]> {
+    return this.request(`/transactions?intentId=${encodeURIComponent(intentId)}`);
+  }
 }
