@@ -637,3 +637,85 @@
 }
 .pm-token-option:hover { background: #edf5ff; }
 .pm-token-option--active { background: #edf5ff; outline: 1.5px solid #b7d0f6; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   RANGE SLIDER — proper centring fix
+   The problem: when `background` was set on the <input> itself (not
+   the ::webkit-slider-runnable-track), the input had to be 4px tall
+   to look like a track. A 22px thumb with margin-top:-9px then
+   rendered offset in many browsers.
+   Fix: input is transparent + 22px tall (matching thumb), gradient
+   lives on ::webkit-slider-runnable-track, thumb margin-top stays
+   at -9px but now correctly bisects the 4px track.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.pm-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 22px;           /* tall enough to contain the thumb fully  */
+  background: transparent; /* clear any old/inline background          */
+  cursor: pointer;
+  outline: none;
+  display: block;
+  padding: 0;
+}
+
+/* ── Track ─────────────────────────────────────────────────────────── */
+.pm-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  /* Fill colour driven by the --fill-pct CSS custom property set     */
+  /* via inline style on the <input>. Falls back to all-grey.         */
+  background: linear-gradient(
+    to right,
+    #22c55e 0%,
+    #22c55e var(--fill-pct, 0%),
+    #e5e7eb var(--fill-pct, 0%),
+    #e5e7eb 100%
+  );
+}
+
+.pm-range::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    #22c55e 0%,
+    #22c55e var(--fill-pct, 0%),
+    #e5e7eb var(--fill-pct, 0%),
+    #e5e7eb 100%
+  );
+  border: none;
+}
+
+/* ── Thumb — centred on the 4px track ─────────────────────────────── */
+.pm-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2.5px solid #22c55e;
+  box-shadow: 0 2px 10px rgba(34, 197, 94, 0.35);
+  /* Centre thumb on 4px track: -(thumbH/2 - trackH/2) = -(11-2) = -9 */
+  margin-top: -9px;
+  cursor: grab;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.pm-range::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  transform: scale(1.15);
+  box-shadow: 0 4px 16px rgba(34, 197, 94, 0.45);
+}
+
+.pm-range::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2.5px solid #22c55e;
+  box-shadow: 0 2px 10px rgba(34, 197, 94, 0.35);
+  cursor: grab;
+}

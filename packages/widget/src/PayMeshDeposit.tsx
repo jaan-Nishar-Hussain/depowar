@@ -553,9 +553,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
               step="0.01"
               value={Math.min(150, Number(amount) || 0)}
               aria-label="Amount slider"
-              style={{
-                background: `linear-gradient(to right, #22c55e 0%, #22c55e ${(Math.min(150, Number(amount) || 0) / 150) * 100}%, #e5e7eb ${(Math.min(150, Number(amount) || 0) / 150) * 100}%, #e5e7eb 100%)`,
-              }}
+              style={{'--fill-pct': `${(Math.min(150, Number(amount) || 0) / 150) * 100}%`} as React.CSSProperties}
               onChange={(e) => resetQuote(e.target.value)}
             />
             <div className="pm-range-labels"><span>$0</span><span>$50</span><span>$100</span><span>$150</span></div>
