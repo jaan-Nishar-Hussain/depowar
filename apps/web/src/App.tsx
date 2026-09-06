@@ -14,6 +14,7 @@ function DepositConfigCard() {
     recipientId: import.meta.env.VITE_RECIPIENT_ID ?? '',
     toChain: Number(import.meta.env.VITE_TO_CHAIN ?? 137),
     toToken: import.meta.env.VITE_TO_TOKEN ?? '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
+    toTokenSymbol: import.meta.env.VITE_TO_TOKEN_SYMBOL ?? 'USDC',
     toTokenDecimals: Number(import.meta.env.VITE_TO_TOKEN_DECIMALS ?? 6),
     fromToken: import.meta.env.VITE_FROM_TOKEN ?? 'native',
     fromTokenByChain: isUsdt
@@ -23,6 +24,7 @@ function DepositConfigCard() {
           1: import.meta.env.VITE_ETHEREUM_MAINNET_USDT ?? import.meta.env.VITE_FROM_TOKEN ?? 'native',
           8453: import.meta.env.VITE_BASE_MAINNET_USDT ?? import.meta.env.VITE_FROM_TOKEN ?? 'native',
           137: import.meta.env.VITE_POLYGON_MAINNET_USDT ?? import.meta.env.VITE_FROM_TOKEN ?? 'native',
+          42161: import.meta.env.VITE_ARBITRUM_MAINNET_USDT ?? import.meta.env.VITE_FROM_TOKEN ?? 'native',
         }
       : {
         11155111: import.meta.env.VITE_SEPOLIA_USDC ?? import.meta.env.VITE_FROM_TOKEN ?? 'native',
@@ -30,6 +32,7 @@ function DepositConfigCard() {
           1: import.meta.env.VITE_ETHEREUM_MAINNET_USDC ?? import.meta.env.VITE_FROM_TOKEN ?? 'native',
           8453: import.meta.env.VITE_BASE_MAINNET_USDC ?? import.meta.env.VITE_FROM_TOKEN ?? 'native',
           137: import.meta.env.VITE_POLYGON_MAINNET_USDC ?? import.meta.env.VITE_FROM_TOKEN ?? 'native',
+          42161: import.meta.env.VITE_ARBITRUM_MAINNET_USDC ?? import.meta.env.VITE_FROM_TOKEN ?? 'native',
       },
     supportedTokensByChain: {
       1: [
@@ -74,7 +77,7 @@ export function App() {
           <div className="mx-auto max-w-2xl px-6 py-10">
             <header className="mb-8">
               <h1 className="text-3xl font-bold tracking-tight">Depowar</h1>
-      <p className="mt-1 text-slate-400">Base USDC → Polygon USDT via the best available route.</p>
+      <p className="mt-1 text-slate-400">Send any asset on any chain → receive USDT on Arbitrum via the best available route.</p>
             </header>
             <DepositConfigCard />
             <footer className="mt-12 border-t border-slate-800 pt-4 text-xs text-slate-500">
