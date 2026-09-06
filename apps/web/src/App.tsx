@@ -73,17 +73,24 @@ export function App() {
   return (
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
-        <div className="min-h-screen bg-slate-950 text-slate-100">
-          <div className="mx-auto max-w-2xl px-6 py-10">
-            <header className="mb-8">
-              <h1 className="text-3xl font-bold tracking-tight">Depowar</h1>
-      <p className="mt-1 text-slate-400">Send any asset on any chain → receive USDT on Arbitrum via the best available route.</p>
-            </header>
-            <DepositConfigCard />
-            <footer className="mt-12 border-t border-slate-800 pt-4 text-xs text-slate-500">
-              Non-custodial routing & settlement. Configure a real route provider for public-testnet execution.
-            </footer>
-          </div>
+        <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+          *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+          .dw-root {
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+            background-color: #0f0f11;
+            background-image:
+              linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
+            background-size: 28px 28px;
+          }
+        `}</style>
+        <div className="dw-root">
+          <DepositConfigCard />
         </div>
       </QueryClientProvider>
     </WagmiProvider>

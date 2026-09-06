@@ -104,6 +104,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [processingProgress, setProcessingProgress] = useState(8);
   const [selectorOpen, setSelectorOpen] = useState(false);
+  const [carouselIndex, setCarouselIndex] = useState(0);
   const swipeRef = useRef<HTMLButtonElement>(null);
 
   const connected = isConnected && !!address && !!chain;
@@ -343,11 +344,82 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
             />
           </label>
 
-          <button type="button" className="pm-token-card" aria-label="Select chain and token" onClick={() => setSelectorOpen(true)}>
-            <span className="pm-token-card__icon"><TokenIcon symbol={sourceSymbol} size={38} /></span>
-            <span className="pm-token-card__name">{sourceSymbol}<small>{chainLabel(chain.id)}</small></span>
-            <span className="pm-token-card__chevron">⌄</span>
-          </button>
+          {/* ── Token Carousel ── */}
+          {(() => {
+            const rawTokens = config.supportedTokensByChain?.[chain.id]?.filter(t => t.address) ?? [];
+            const allTokens = rawTokens.length > 0 ? rawTokens : [{ symbol: sourceSymbol, address: sourceToken }];
+            const visibleCount = Math.min(allTokens.length, 4);
+            const activeIdx = allTokens.length > 0 ? carouselIndex % allTokens.length : 0;
+            // Build a window of up to 4 tokens centred on active
+            const startIdx = Math.max(0, Math.min(activeIdx - 1, allTokens.length - visibleCount));
+            const visible = allTokens.slice(startIdx, startIdx + visibleCount);
+            return (
+              <div className="pm-carousel">
+                <div className="pm-carousel__track-wrap">
+                  <button
+                    type="button"
+                    className="pm-carousel__arrow"
+                    aria-label="Previous token"
+                    onClick={() => {
+                      const prev = (carouselIndex - 1 + allTokens.length) % allTokens.length;
+                      setCarouselIndex(prev);
+                      setSelectedToken(allTokens[prev]?.address);
+                    }}
+                  >&#8249;</button>
+                  <div className="pm-carousel__icons">
+                    {visible.map((t, i) => (
+                      <span
+                        key={t.address}
+                        className={startIdx + i === activeIdx ? 'pm-carousel__icon--active' : ''}
+                        style={{ zIndex: startIdx + i === activeIdx ? 3 : 1 }}
+                      >
+                        <TokenIcon symbol={t.symbol} size={30} />
+                      </span>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className="pm-carousel__arrow"
+                    aria-label="Next token"
+                    onClick={() => {
+                      const next = (carouselIndex + 1) % allTokens.length;
+                      setCarouselIndex(next);
+                      setSelectedToken(allTokens[next]?.address);
+                    }}
+                  >&#8250;</button>
+                </div>
+
+                {/* Dots */}
+                <div className="pm-carousel__dots" role="tablist">
+                  {allTokens.map((_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      role="tab"
+                      aria-selected={i === activeIdx}
+                      className={`pm-carousel__dot${i === activeIdx ? ' pm-carousel__dot--active' : ''}`}
+                      onClick={() => { setCarouselIndex(i); setSelectedToken(allTokens[i]?.address); }}
+                    />
+                  ))}
+                </div>
+
+                {/* Token name + chain + chevron */}
+                <div className="pm-carousel__meta">
+                  <button type="button" className="pm-carousel__token-label" onClick={() => setSelectorOpen(true)} aria-label="Select chain and token">
+                    <strong>{sourceSymbol}</strong>
+                    <span>{chainLabel(chain.id)}</span>
+                  </button>
+                  <button type="button" className="pm-carousel__chevron" onClick={() => setSelectorOpen(true)} aria-label="Open token selector">&#8964;</button>
+                </div>
+
+                {/* Wallet address */}
+                <div className="pm-carousel__address">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3H8L2 7"/></svg>
+                  {address!.slice(0, 6)}…{address!.slice(-4)}
+                </div>
+              </div>
+            );
+          })()}
 
           {selectorOpen && (
             <div className="pm-selector-backdrop" role="presentation" onClick={() => setSelectorOpen(false)}>
@@ -385,14 +457,18 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
           )}
 
           <div className="pm-range-wrap">
+            <div className="pm-range-header"><span>$0</span><span>Max</span></div>
             <input
-              className="pm-range"
+              className="pm-range pm-range-track-fill"
               type="range"
               min="0"
               max="150"
               step="0.01"
               value={Math.min(150, Number(amount) || 0)}
               aria-label="Amount slider"
+              style={{
+                background: `linear-gradient(to right, #22c55e 0%, #22c55e ${(Math.min(150, Number(amount) || 0) / 150) * 100}%, #e5e7eb ${(Math.min(150, Number(amount) || 0) / 150) * 100}%, #e5e7eb 100%)`,
+              }}
               onChange={(e) => resetQuote(e.target.value)}
             />
             <div className="pm-range-labels"><span>$0</span><span>$50</span><span>$100</span><span>$150</span></div>
@@ -421,8 +497,11 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
                   <TokenIcon symbol={sourceSymbol} size={38} />
                 </span>
                 <span className="pm-swipe__label">{status === 'quoting' ? 'Getting quote…' : 'Swipe to continue'}</span>
+                <span className="pm-swipe__destination" aria-hidden="true">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </span>
               </button>
-              <div className="pm-swipe__route">{sourceSymbol} on {chainLabel(chain.id)}</div>
+              <div className="pm-swipe__route">{sourceSymbol} on {chainLabel(chain.id)} → {config.toTokenSymbol ?? 'USDC'}</div>
             </>
           )}
 
@@ -455,8 +534,11 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
                   <TokenIcon symbol={sourceSymbol} size={38} />
                 </span>
                 <span className="pm-swipe__label">{isSigning ? 'Confirming…' : 'Swipe to confirm'}</span>
+                <span className="pm-swipe__destination" aria-hidden="true">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </span>
               </button>
-              <div className="pm-swipe__route">{sourceSymbol} on {chainLabel(chain.id)}</div>
+              <div className="pm-swipe__route">{sourceSymbol} on {chainLabel(chain.id)} → {config.toTokenSymbol ?? 'USDC'}</div>
             </div>
           )}
 
