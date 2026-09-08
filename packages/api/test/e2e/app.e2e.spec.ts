@@ -85,7 +85,7 @@ beforeAll(async () => {
   prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
   const client = await prisma.client.create({ data: { name: 'e2e-client' } });
   await prisma.apiKey.create({
-    data: { clientId: client.id, keyHash: hashApiKey(API_KEY), scopes: ['deposits', 'quote', 'webhooks', 'recipients', 'management'] },
+    data: { clientId: client.id, keyPrefix: API_KEY.slice(0, 12), keyHash: hashApiKey(API_KEY), scopes: ['deposits', 'quote', 'webhooks', 'recipients', 'management'] },
   });
   const recipient = await prisma.recipient.create({
     data: {

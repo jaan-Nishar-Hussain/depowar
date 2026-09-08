@@ -62,11 +62,22 @@ export class ApiKeyGuard implements CanActivate {
     const prefix = key.startsWith('dw_live_') ? 'dw_live_' : key.startsWith('dw_test_') ? 'dw_test_' : '';
     let record: Awaited<ReturnType<typeof this.prisma.apiKey.findFirst>> = null;
     if (prefix) {
-      // Constant-time hash comparison (PRD §Security). Fetch all keys carrying
-      // this prefix and compare each hash with timingSafeEqual so a multi-key
-      // client still resolves the presented key correctly.
+      // Constant-time hash comparison (PRD §Security). ApiKeysService stores
+      // keyPrefix = plaintext.slice(0, 12), so match that exact prefix (not
+      // the 8-char token) for the key's environment, then verify each hash.
       const candidates = await this.prisma.apiKey.findMany({
-        where: { keyPrefix: prefix, environment: prefix === 'dw_live_' ? 'LIVE' : 'TEST' },
+        where: { keyPrefix: key.slice(0, 12), environment: prefix === 'dw_live_' ? 'LIVE' : 'TEST' },
+        include: { client: true },
+      });
+      record = candidates.find((candidate) => verifyApiKeyHash(key, candidate.keyHash)) ?? null;
+    }
+    if (!record) {
+      // Fallback for keys not found by the dw_ prefix path (e.g. legacy or
+      // manually-inserted keys): a bounded scan of every enabled key, still
+      // verified with the constant-time hash comparison. Kept separate from
+      // the prefixed path so the common case stays a single indexed query.
+      const candidates = await this.prisma.apiKey.findMany({
+        where: { enabled: true },
         include: { client: true },
       });
       record = candidates.find((candidate) => verifyApiKeyHash(key, candidate.keyHash)) ?? null;

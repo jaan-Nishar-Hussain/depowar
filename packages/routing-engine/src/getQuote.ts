@@ -356,29 +356,25 @@ export async function getQuote(
 
   // Simulation (PRD §simulate before you commit): when a stateless `eth_call`
   // callback is provided, try candidates in rank order and skip any whose
-  // signable transactions revert. Every hop is simulated (PRD §Simulation:
-  // "Uniswap or 1inch quotes are simulated via their on-chain router
-  // contracts"), not just the first — later hops that would revert are caught
-  // before a quote is returned.
+  // FIRST signable transaction reverts. Stateless `eth_call` cannot simulate
+  // later hops — they depend on the state the earlier hops produce (e.g. the
+  // allowance set by an approval), which a fresh call does not carry. Full
+  // multi-hop simulation requires a forked chain with state accumulation
+  // (e.g. anvil), so only the first hop is checked here.
   if (deps.simulateTx) {
     const executable: CandidateRoute[] = [];
     for (const candidate of ranked) {
-      const hops = candidate.hopTransactionRequests && candidate.hopTransactionRequests.length > 0
-        ? candidate.hopTransactionRequests
-        : candidate.transactionRequest
-          ? [candidate.transactionRequest]
-          : [];
-      let ok = true;
-      for (const tx of hops) {
-        try {
-          await deps.simulateTx(tx);
-        } catch (error) {
-          deps.metrics?.recordRouteDiscarded((error as Error).message ?? 'simulation failed');
-          ok = false;
-          break;
-        }
+      const first = candidate.transactionRequest ?? candidate.hopTransactionRequests?.[0];
+      if (!first) {
+        executable.push(candidate);
+        continue;
       }
-      if (ok) executable.push(candidate);
+      try {
+        await deps.simulateTx(first);
+        executable.push(candidate);
+      } catch (error) {
+        deps.metrics?.recordRouteDiscarded((error as Error).message ?? 'simulation failed');
+      }
     }
     ranked = executable;
   }

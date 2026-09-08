@@ -16,7 +16,7 @@ const WORKER_QUEUES = ['tx-monitor', 'webhook-dispatch', 'quote-expiry', 'fallba
 @Controller('metrics')
 export class MetricsController {
   constructor(
-    private readonly routingMetrics: RoutingMetricsService,
+    @Inject(RoutingMetricsService) private readonly routingMetrics: RoutingMetricsService,
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(QueueService) private readonly queueService: QueueService,
   ) {}
