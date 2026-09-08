@@ -6,7 +6,7 @@ import { AuditService } from '../audit/audit.service';
 import { EventService } from '../queue/event.service';
 import { ENV } from '../common/tokens';
 import { AppEnv, getDestinationChainIds, getChain } from '@paymesh/config';
-import type { CreateDepositIntentDto } from './dto';
+import type { CreateDepositIntentDto, ListDepositIntentsQueryDto } from './dto';
 
 @Injectable()
 export class DepositIntentsService {
@@ -80,6 +80,80 @@ export class DepositIntentsService {
     });
 
     return { depositId: deposit.id, status: deposit.status, created: true };
+  }
+
+  /**
+   * Dashboard deposit list (PRD §API): paginated, filterable by status,
+   * destination chain, and date, with the latest quote's source context and
+   * per-deposit transaction counts. Enriched by the newest quote so the list
+   * shows what was actually sent (from chain/token/amount) per deposit.
+   */
+  async list(clientId: string, query: ListDepositIntentsQueryDto): Promise<unknown> {
+    const page = Math.max(1, query.page ?? 1);
+    const limit = Math.min(100, Math.max(1, query.limit ?? 20));
+    const where: {
+      clientId: string;
+      status?: string;
+      toChainId?: number;
+      createdAt?: { gte?: Date; lte?: Date };
+      OR?: Array<{ id?: { contains: string }; recipient?: { walletAddress?: { contains: string } } }>;
+    } = { clientId };
+    if (query.status) where.status = query.status;
+    if (query.toChainId) where.toChainId = query.toChainId;
+    if (query.fromDate || query.toDate) {
+      where.createdAt = {};
+      if (query.fromDate) where.createdAt.gte = new Date(query.fromDate);
+      if (query.toDate) where.createdAt.lte = new Date(query.toDate);
+    }
+    if (query.search) {
+      where.OR = [
+        { id: { contains: query.search } },
+        { recipient: { walletAddress: { contains: query.search } } },
+      ];
+    }
+
+    const [total, rows] = await Promise.all([
+      this.prisma.depositIntent.count({ where }),
+      this.prisma.depositIntent.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          recipient: { select: { walletAddress: true } },
+          quotes: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: { fromChainId: true, fromToken: true, fromAmount: true, providerId: true, estimatedOutput: true },
+          },
+          transactions: { select: { status: true } },
+        },
+      }),
+    ]);
+
+    const items = rows.map((deposit) => {
+      const latest = deposit.quotes[0];
+      const txStatuses = deposit.transactions.map((tx) => tx.status);
+      return {
+        id: deposit.id,
+        status: deposit.status,
+        toChainId: deposit.toChainId,
+        toToken: deposit.toToken,
+        recipientId: deposit.recipientId,
+        recipientWallet: deposit.recipient.walletAddress,
+        fromChainId: latest?.fromChainId ?? null,
+        fromToken: latest?.fromToken ?? null,
+        fromAmount: latest?.fromAmount?.toString() ?? null,
+        estimatedOutput: latest?.estimatedOutput?.toString() ?? null,
+        providerId: latest?.providerId ?? null,
+        transactionCount: txStatuses.length,
+        confirmedTransactions: txStatuses.filter((s) => s === 'CONFIRMED' || s === 'SETTLEMENT_PENDING').length,
+        createdAt: deposit.createdAt,
+        updatedAt: deposit.updatedAt,
+      };
+    });
+
+    return { items, total, page, limit };
   }
 
   async findOne(clientId: string, depositId: string): Promise<unknown> {

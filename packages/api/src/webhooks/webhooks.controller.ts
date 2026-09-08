@@ -20,6 +20,12 @@ export class WebhooksController {
     return this.service.list(client.id);
   }
 
+  @Get(':id/deliveries')
+  @Scopes('webhooks')
+  async deliveries(@Client() client: ClientContext, @Param('id') id: string) {
+    return this.service.deliveries(client.id, id);
+  }
+
   @Delete(':id')
   @Scopes('webhooks')
   remove(@Client() client: ClientContext, @Param('id') id: string) {

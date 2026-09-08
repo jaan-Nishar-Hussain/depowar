@@ -11,4 +11,10 @@ export class AnalyticsController {
   overview(@Client() client: ClientContext, @Query('days') days?: string): Promise<unknown> {
     return this.service.overview(client.id, days ? Number(days) : 30);
   }
+
+  @Get('timeseries')
+  @Scopes('management')
+  timeseries(@Client() client: ClientContext, @Query('days') days?: string): Promise<unknown> {
+    return this.service.timeseries(client.id, days ? Number(days) : 30);
+  }
 }

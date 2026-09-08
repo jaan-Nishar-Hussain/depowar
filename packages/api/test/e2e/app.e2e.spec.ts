@@ -18,6 +18,13 @@ const API_KEY = `pm_test_${randomUUID().replace(/-/g, '')}`;
 
 const fakeRoutingProvider: RoutingProvider = {
   async getQuote(req: QuoteRequest): Promise<{ best: Quote; alternates: Quote[] }> {
+    const tx = {
+      to: '0x2222222222222222222222222222222222222222' as const,
+      data: '0xdeadbeef' as const,
+      value: 0n,
+      chainId: req.fromChain,
+      from: req.fromAddress,
+    };
     const best: Quote = {
       request: req,
       route: [
@@ -38,13 +45,8 @@ const fakeRoutingProvider: RoutingProvider = {
       reliability: 0.95,
       adapterId: 'fake-bridge',
       slippageBps: req.slippageBps ?? 50,
-      transactionRequest: {
-        to: '0x2222222222222222222222222222222222222222',
-        data: '0xdeadbeef',
-        value: 0n,
-        chainId: req.fromChain,
-        from: req.fromAddress,
-      },
+      transactionRequest: tx,
+      hopTransactionRequests: [tx],
     };
     return { best, alternates: [] };
   },
@@ -81,6 +83,11 @@ beforeAll(async () => {
   process.env.DATABASE_URL = databaseUrl;
   process.env.REDIS_URL = redisUrl;
   process.env.SCREENING_DENY_LIST = '0x1234567890123456789012345678901234567890';
+  // The e2e suite exercises the testnet flow (Base Sepolia settlement).
+  process.env.PAYMESH_DEST_CHAIN_ID = '84532';
+  process.env.PAYMESH_DEST_CHAIN_IDS = '84532';
+  // Synthetic tx hashes are reported in tests; skip calldata hash validation.
+  process.env.TX_VALIDATION_ENABLED = 'false';
 
   prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
   const client = await prisma.client.create({ data: { name: 'e2e-client' } });
@@ -134,7 +141,7 @@ describe('PayMesh API e2e', () => {
   it('lists supported chains and tokens', async () => {
     const chains = await http().get('/v1/chains').set('x-api-key', API_KEY).expect(200);
     expect(chains.body.map((c: { id: number }) => c.id)).toEqual(
-      expect.arrayContaining([31337, 11155111, 84532, 421614]),
+      expect.arrayContaining([31337, 11155111, 84532, 80002, 1]),
     );
 
     const tokens = await http()
@@ -359,6 +366,53 @@ describe('PayMesh API e2e', () => {
       expect(res.body.totalDeposits).toBeGreaterThanOrEqual(1);
       expect(typeof res.body.successRate).toBe('number');
       expect(typeof res.body.providerBreakdown).toBe('object');
+    });
+
+    it('returns analytics timeseries (dashboard chart)', async () => {
+      const res = await http()
+        .get('/v1/analytics/timeseries')
+        .query({ days: 7 })
+        .set('x-api-key', API_KEY)
+        .expect(200);
+      expect(res.body.series).toBeDefined();
+      expect(res.body.series.length).toBeLessThanOrEqual(7);
+    });
+
+    it('lists deposit intents with pagination and source context', async () => {
+      const res = await http()
+        .get('/v1/deposit-intents')
+        .query({ page: 1, limit: 10 })
+        .set('x-api-key', API_KEY)
+        .expect(200);
+      expect(res.body.items).toBeDefined();
+      expect(res.body.total).toBeGreaterThanOrEqual(1);
+      const first = res.body.items[0];
+      if (first) {
+        expect(first.id).toBeTruthy();
+        expect(typeof first.status).toBe('string');
+        expect(typeof first.toChainId).toBe('number');
+      }
+    });
+
+    it('lists webhook deliveries', async () => {
+      const created = await http()
+        .post('/v1/webhooks')
+        .set('x-api-key', API_KEY)
+        .send({ url: 'https://example.com/deliveries', events: ['deposit.settled'] })
+        .expect(201);
+      const res = await http()
+        .get(`/v1/webhooks/${created.body.id}/deliveries`)
+        .set('x-api-key', API_KEY)
+        .expect(200);
+      expect(res.body.items).toBeDefined();
+      expect(Array.isArray(res.body.items)).toBe(true);
+    });
+
+    it('exposes provider health', async () => {
+      const res = await http().get('/v1/health/providers').expect(200);
+      expect(res.body.providers).toBeDefined();
+      expect(res.body.providers.lifi).toBeDefined();
+      expect(res.body.providers.across).toBeDefined();
     });
   });
 });

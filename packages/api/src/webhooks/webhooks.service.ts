@@ -37,6 +37,22 @@ export class WebhooksService {
     return this.prisma.webhookSubscription.findMany({ where: { clientId, enabled: true } });
   }
 
+  /** Delivery log for a webhook (PRD §Monitoring). Rows are written by the
+   * worker's dispatch job (status, attempts, responseCode, lastError). */
+  async deliveries(clientId: string, id: string, limit = 50) {
+    const sub = await this.prisma.webhookSubscription.findFirst({ where: { id, clientId } });
+    if (!sub) {
+      return { items: [] };
+    }
+    const items = await this.prisma.webhookDelivery.findMany({
+      where: { subscriptionId: id },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(200, Math.max(1, limit)),
+      include: { subscription: { select: { url: true } } },
+    });
+    return { items };
+  }
+
   async remove(clientId: string, id: string) {
     const sub = await this.prisma.webhookSubscription.findFirst({ where: { id, clientId } });
     if (!sub) {

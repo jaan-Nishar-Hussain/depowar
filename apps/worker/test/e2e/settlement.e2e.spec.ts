@@ -100,7 +100,7 @@ beforeAll(async () => {
 
   const client = await prisma.client.create({ data: { name: 'worker-e2e' } });
   await prisma.apiKey.create({
-    data: { clientId: client.id, keyHash: hashApiKey(API_KEY), scopes: ['*'] },
+    data: { clientId: client.id, keyPrefix: API_KEY.slice(0, 12), keyHash: hashApiKey(API_KEY), scopes: ['*'] },
   });
   await prisma.webhookSubscription.create({
     data: {
@@ -210,39 +210,27 @@ describe('worker settlement (Anvil + mocks + Postgres + Redis)', () => {
   it('settles a cross-chain deposit end-to-end and fires deposit.settled', async () => {
     const { deposit, best, hopTxIds } = await createDepositWithQuote(src.mockWeth, parseEther('1'));
     const txs = best.hopTransactionRequests!;
-    expect(txs).toHaveLength(2); // swap + bridge
+    expect(txs.length).toBeGreaterThanOrEqual(2); // approvals + swap + bridge
 
-    const erc20Abi = readArtifact('MockERC20').abi;
-    // approve bridge for the swap output token (USDC)
-    await src.walletClient.writeContract({
-      address: src.mockUsdc,
-      abi: erc20Abi,
-      functionName: 'approve',
-      args: [src.mockBridge, maxUint256],
-    });
-
-    // hop 0: swap
-    const hash0 = await src.walletClient.sendTransaction({ to: txs[0]!.to, data: txs[0]!.data, value: txs[0]!.value, gas: 1_000_000n });
-    await prisma.transaction.update({
-      where: { id: hopTxIds[0]! },
-      data: { txHash: hash0, status: 'SUBMITTED', submittedAt: new Date() },
-    });
-    await enqueueMonitor(ctx, hopTxIds[0]!);
-
-    // wait for hop0 confirm -> AWAITING_SIGNATURE
-    await waitFor(async () => (await prisma.depositIntent.findUnique({ where: { id: deposit.id } }))?.status === 'AWAITING_SIGNATURE');
-
-    // hop 1: bridge deposit (sender-signed)
-    const hash1 = await src.walletClient.sendTransaction({ to: txs[1]!.to, data: txs[1]!.data, value: txs[1]!.value, gas: 1_000_000n });
-    await prisma.transaction.update({
-      where: { id: hopTxIds[1]! },
-      data: { txHash: hash1, status: 'SUBMITTED', submittedAt: new Date() },
-    });
-    await enqueueMonitor(ctx, hopTxIds[1]!);
+    // Sign every hop in order: approval → swap → approval → bridge. The worker
+    // confirms each hop before the next one becomes signable.
+    for (let i = 0; i < txs.length; i++) {
+      const isLast = i === txs.length - 1;
+      const hash = await src.walletClient.sendTransaction({ to: txs[i]!.to, data: txs[i]!.data, value: txs[i]!.value, gas: 1_000_000n });
+      await prisma.transaction.update({
+        where: { id: hopTxIds[i]! },
+        data: { txHash: hash, status: 'SUBMITTED', submittedAt: new Date() },
+      });
+      await enqueueMonitor(ctx, hopTxIds[i]!);
+      if (!isLast) {
+        await waitFor(async () => (await prisma.depositIntent.findUnique({ where: { id: deposit.id } }))?.status === 'AWAITING_SIGNATURE');
+      }
+    }
 
     // worker confirms bridge, settles on dest chain, marks SETTLED
     await waitFor(async () => (await prisma.depositIntent.findUnique({ where: { id: deposit.id } }))?.status === 'SETTLED');
 
+    const erc20Abi = readArtifact('MockERC20').abi;
     const recipientBalance = (await dst.publicClient.readContract({
       address: dst.mockUsdc,
       abi: erc20Abi,
@@ -256,7 +244,7 @@ describe('worker settlement (Anvil + mocks + Postgres + Redis)', () => {
   }, 90_000);
 
   it('marks a deposit FAILED when no fallback route exists and fires deposit.failed', async () => {
-    // Force the DEX to reject the swap so the first hop reverts.
+    // Force the DEX to reject the swap so the swap hop reverts.
     const dexAbi = readArtifact('MockDEX').abi;
     await src.walletClient.writeContract({
       address: src.mockDex,
@@ -267,17 +255,22 @@ describe('worker settlement (Anvil + mocks + Postgres + Redis)', () => {
 
     const { deposit, best, hopTxIds } = await createDepositWithQuote(src.mockWeth, parseEther('0.5'));
     const txs = best.hopTransactionRequests!;
+    const swapIndex = best.route.findIndex((h) => h.type === 'swap');
+    if (swapIndex === -1) throw new Error('no swap hop in route');
 
-    const hash0 = await src.walletClient.sendTransaction({ to: txs[0]!.to, data: txs[0]!.data, value: txs[0]!.value, gas: 1_000_000n });
+    // Sign the swap hop (the fail countdown makes it revert). The monitor sees
+    // the revert and triggers the fallback re-quote; with only mock adapters
+    // there is no alternative route, so the deposit is marked FAILED.
+    const hash = await src.walletClient.sendTransaction({ to: txs[swapIndex]!.to, data: txs[swapIndex]!.data, value: txs[swapIndex]!.value, gas: 1_000_000n });
     await prisma.transaction.update({
-      where: { id: hopTxIds[0]! },
-      data: { txHash: hash0, status: 'SUBMITTED', submittedAt: new Date() },
+      where: { id: hopTxIds[swapIndex]! },
+      data: { txHash: hash, status: 'SUBMITTED', submittedAt: new Date() },
     });
-    await enqueueMonitor(ctx, hopTxIds[0]!);
+    await enqueueMonitor(ctx, hopTxIds[swapIndex]!);
 
     await waitFor(async () => (await prisma.depositIntent.findUnique({ where: { id: deposit.id } }))?.status === 'FAILED');
 
-    const hop = await prisma.transaction.findUnique({ where: { id: hopTxIds[0]! } });
+    const hop = await prisma.transaction.findUnique({ where: { id: hopTxIds[swapIndex]! } });
     expect(hop?.status).toBe('FAILED');
 
     await waitFor(async () => delivered.some((d) => d.type === 'deposit.failed'));

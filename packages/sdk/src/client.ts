@@ -67,6 +67,47 @@ export class PayMeshClient {
     return this.request('/deposit-intents', { method: 'POST', body: JSON.stringify(input) });
   }
 
+  /** Dashboard deposit list: paginated + filterable (PRD §API). */
+  listDepositIntents(query: {
+    status?: string;
+    toChainId?: number;
+    search?: string;
+    fromDate?: string;
+    toDate?: string;
+    page?: number;
+    limit?: number;
+  } = {}): Promise<{
+    items: Array<{
+      id: string;
+      status: string;
+      toChainId: number;
+      toToken: string;
+      recipientWallet?: string;
+      fromChainId?: number | null;
+      fromToken?: string | null;
+      fromAmount?: string | null;
+      estimatedOutput?: string | null;
+      providerId?: string | null;
+      transactionCount: number;
+      confirmedTransactions: number;
+      createdAt: string;
+    }>;
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    const params = new URLSearchParams();
+    if (query.status) params.set('status', query.status);
+    if (query.toChainId) params.set('toChainId', String(query.toChainId));
+    if (query.search) params.set('search', query.search);
+    if (query.fromDate) params.set('fromDate', query.fromDate);
+    if (query.toDate) params.set('toDate', query.toDate);
+    if (query.page) params.set('page', String(query.page));
+    if (query.limit) params.set('limit', String(query.limit));
+    const qs = params.toString();
+    return this.request(`/deposit-intents${qs ? `?${qs}` : ''}`);
+  }
+
   getQuote(query: QuoteQuery): Promise<QuoteResult> {
     const params = new URLSearchParams({
       depositId: query.depositId,
@@ -101,6 +142,22 @@ export class PayMeshClient {
 
   listWebhooks(): Promise<WebhookSubscription[]> {
     return this.request('/webhooks');
+  }
+
+  /** Webhook delivery log (PRD §Monitoring). */
+  listWebhookDeliveries(webhookId: string, limit = 50): Promise<{
+    items: Array<{
+      id: string;
+      eventId?: string | null;
+      status: string;
+      attempts: number;
+      responseCode?: number | null;
+      lastError?: string | null;
+      deliveredAt?: string | null;
+      createdAt: string;
+    }>;
+  }> {
+    return this.request(`/webhooks/${encodeURIComponent(webhookId)}/deliveries?limit=${limit}`);
   }
 
   deleteWebhook(id: string): Promise<{ deleted: boolean }> {
@@ -153,6 +210,16 @@ export class PayMeshClient {
   }
 
   getAnalytics(days = 30): Promise<AnalyticsOverview> { return this.request(`/analytics/overview?days=${days}`); }
+
+  /** Daily deposit/settlement volume series (dashboard chart). */
+  getAnalyticsTimeseries(days = 30): Promise<{ days: number; series: Array<{ day: string; deposits: number; settled: number; failed: number; volume: string; settledVolume: string }> }> {
+    return this.request(`/analytics/timeseries?days=${days}`);
+  }
+
+  /** Live provider health (dashboard provider strip). */
+  getProviderHealth(): Promise<unknown> {
+    return this.request('/health/providers');
+  }
 
   listWorkspaces(): Promise<Array<{ id: string; name: string; projects: Array<{ id: string; name: string; clientId?: string; liveClientId?: string }> }>> { return this.request('/workspaces'); }
   createWorkspace(name: string): Promise<{ id: string; name: string }> { return this.request('/workspaces', { method: 'POST', body: JSON.stringify({ name }) }); }

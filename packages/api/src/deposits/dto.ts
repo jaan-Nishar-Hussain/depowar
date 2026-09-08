@@ -10,3 +10,15 @@ export const CreateDepositIntentSchema = z.object({
 });
 
 export type CreateDepositIntentDto = z.infer<typeof CreateDepositIntentSchema>;
+
+/** Query params for the dashboard deposit-intent list (PRD §API). */
+export const ListDepositIntentsQuery = z.object({
+  status: z.string().optional(),
+  toChainId: z.coerce.number().int().positive().optional(),
+  search: z.string().max(128).optional(),
+  fromDate: z.string().optional(),
+  toDate: z.string().optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+});
+export type ListDepositIntentsQueryDto = z.infer<typeof ListDepositIntentsQuery>;

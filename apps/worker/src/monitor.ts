@@ -322,7 +322,16 @@ export async function processFallback(
     sourceUsdc: getToken(routeQuote.fromChainId, 'USDC')?.address as Address | undefined,
     destinationUsdc: getToken(deposit.toChainId, 'USDC')?.address as Address | undefined,
     cctpEnabled: ctx.env.CCTP_ENABLED,
-    cctpDestinationDomain: cctpDomain(deposit.toChainId),
+    // Guarded: CCTP has no domain on every chain (e.g. Anvil fixtures), and an
+    // unguarded throw here would crash the fallback job before the deposit can
+    // be marked FAILED.
+    cctpDestinationDomain: (() => {
+      try {
+        return cctpDomain(deposit.toChainId);
+      } catch {
+        return undefined;
+      }
+    })(),
     cctpMaxFee: ctx.env.CCTP_MAX_FEE,
     cctpMinFinalityThreshold: ctx.env.CCTP_MIN_FINALITY_THRESHOLD,
     allowMock: ctx.env.PAYMESH_ALLOW_MOCK_ROUTES,
