@@ -54,6 +54,17 @@ const fakeRoutingProvider: RoutingProvider = {
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
 
+/** Builds a signed session JWT matching AuthService.session (HMAC-SHA256). */
+function makeJwt(sub: string, clientId: string, email: string, secret = 'e2e-jwt-secret'): string {
+  const b64 = (value: string) => Buffer.from(value).toString('base64url');
+  const header = b64(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const now = Math.floor(Date.now() / 1000);
+  const payload = b64(JSON.stringify({ sub, clientId, email, iat: now, exp: now + 3600 }));
+  const crypto = require('node:crypto') as typeof import('node:crypto');
+  const signature = Buffer.from(crypto.createHmac('sha256', secret).update(`${header}.${payload}`).digest()).toString('base64url');
+  return `${header}.${payload}.${signature}`;
+}
+
 let app: INestApplication;
 let prisma: PrismaClient;
 let recipientId: string;
@@ -88,6 +99,8 @@ beforeAll(async () => {
   process.env.PAYMESH_DEST_CHAIN_IDS = '84532';
   // Synthetic tx hashes are reported in tests; skip calldata hash validation.
   process.env.TX_VALIDATION_ENABLED = 'false';
+  // Session JWTs are HMAC-signed; pin the secret so the test can mint sessions.
+  process.env.AUTH_JWT_SECRET = 'e2e-jwt-secret';
 
   prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
   const client = await prisma.client.create({ data: { name: 'e2e-client' } });
@@ -319,23 +332,74 @@ describe('PayMesh API e2e', () => {
       expect(updated.body.name).toBe('e2e-renamed');
     });
 
-    it('lists, creates (plaintext once) and revokes API keys', async () => {
-      const listed = await http().get('/v1/api-keys').set('x-api-key', API_KEY).expect(200);
-      expect(Array.isArray(listed.body)).toBe(true);
+    it('enforces one active API key per project (revoke → create)', async () => {
+      // Set up a user + org + project owned by a session, then manage keys
+      // through the session (Bearer), mirroring the real dashboard flow.
+      const user = await prisma!.user.create({ data: { email: 'keys@e2e.dev', passwordHash: 'x' } });
+      const org = await prisma!.organization.create({ data: { name: 'keys-org', ownerId: user.id } });
+      const client = await prisma!.client.create({ data: { name: 'keys-client' } });
+      await prisma!.project.create({ data: { organizationId: org.id, name: 'keys-project', clientId: client.id } });
+      await prisma!.membership.create({ data: { userId: user.id, organizationId: org.id, role: 'OWNER' } });
+      const bearer = makeJwt(user.id, client.id, user.email);
 
       const created = await http()
         .post('/v1/api-keys')
-        .set('x-api-key', API_KEY)
+        .set('authorization', `Bearer ${bearer}`)
         .send({ scopes: ['deposits'] })
         .expect(201);
       expect(created.body.key).toBeTruthy();
       expect(created.body.key.length).toBeGreaterThan(30); // plaintext shown once
 
-      const removed = await http()
+      // A second key cannot be created while one is active.
+      const blocked = await http()
+        .post('/v1/api-keys')
+        .set('authorization', `Bearer ${bearer}`)
+        .send({ scopes: ['deposits'] })
+        .expect(409);
+      expect(blocked.body.error.code).toBe('ACTIVE_KEY_EXISTS');
+
+      // After revoking, a new key can be created.
+      await http()
         .delete(`/v1/api-keys/${created.body.id}`)
-        .set('x-api-key', API_KEY)
+        .set('authorization', `Bearer ${bearer}`)
         .expect(200);
-      expect(removed.body.revoked).toBe(true);
+      const recreated = await http()
+        .post('/v1/api-keys')
+        .set('authorization', `Bearer ${bearer}`)
+        .send({ scopes: ['deposits'] })
+        .expect(201);
+      expect(recreated.body.key).toBeTruthy();
+    });
+
+    it('creates the first project and its API key for a fresh account', async () => {
+      // A fresh sign-up has a user + org + default TEST client but NO project.
+      const user = await prisma!.user.create({ data: { email: 'fresh@e2e.dev', passwordHash: 'x' } });
+      const defaultClient = await prisma!.client.create({ data: { name: 'Fresh Co', environment: 'TEST' } });
+      await prisma!.organization.create({ data: { name: 'Fresh Co', ownerId: user.id, defaultClientId: defaultClient.id } });
+      const org = await prisma!.organization.findFirstOrThrow({ where: { ownerId: user.id } });
+      await prisma!.membership.create({ data: { userId: user.id, organizationId: org.id, role: 'OWNER' } });
+      const bearer = makeJwt(user.id, defaultClient.id, user.email);
+
+      // Keys are blocked until a project exists…
+      await http()
+        .post('/v1/api-keys')
+        .set('authorization', `Bearer ${bearer}`)
+        .send({ scopes: ['deposits'] })
+        .expect(400); // PROJECT_REQUIRED
+
+      // …so create the first project, which mints the first API key.
+      const res = await http()
+        .post('/v1/projects')
+        .set('authorization', `Bearer ${bearer}`)
+        .send({
+          name: 'Fresh Project',
+          receiverAddress: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+          destinationChainId: 84532,
+          destinationToken: 'USDC',
+        })
+        .expect(201);
+      expect(res.body.project.name).toBe('Fresh Project');
+      expect(res.body.apiKey.key).toBeTruthy();
     });
 
     it('rejects API key creation when the client has no project', async () => {

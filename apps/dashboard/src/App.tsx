@@ -198,6 +198,11 @@ export function App() {
           </div>
         </header>
         {environmentMode === 'TEST' && <div className="mode-banner">TEST MODE — transactions and keys are isolated from live payments.</div>}
+        {!projectsData.loading && projects.length === 0 && (
+          <div className="notice no-project-banner">
+            No project yet — create one to get your first API key and settlement destination. <a href="#organization">Create a project →</a>
+          </div>
+        )}
         {message && <div className="notice">{message}</div>}
 
         {activeSection === 'overview' && client && <Overview client={client} />}

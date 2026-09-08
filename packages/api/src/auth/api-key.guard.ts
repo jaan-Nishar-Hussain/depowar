@@ -36,6 +36,9 @@ export class ApiKeyGuard implements CanActivate {
 
     if ((!key || typeof key !== 'string') && authorization?.startsWith('Bearer ')) {
       const claims = this.auth.verify(authorization.slice(7));
+      // A session is valid when its client belongs to a project the user is a
+      // member of, OR (for a fresh account with no project yet) when the client
+      // is the owning organization's default sign-up client.
       const validSession = await this.prisma.project.findFirst({
         where: {
           OR: [{ clientId: claims.clientId }, { liveClientId: claims.clientId }],
@@ -43,7 +46,13 @@ export class ApiKeyGuard implements CanActivate {
         },
         select: { clientId: true },
       });
-      if (!validSession) throw new UnauthorizedException('Session is no longer valid. Please sign in again.');
+      if (!validSession) {
+        const defaultOrg = await this.prisma.organization.findFirst({
+          where: { defaultClientId: claims.clientId, memberships: { some: { userId: claims.sub, status: 'ACTIVE' } } },
+          select: { id: true },
+        });
+        if (!defaultOrg) throw new UnauthorizedException('Session is no longer valid. Please sign in again.');
+      }
       (request as Request & { client: ClientContext }).client = { id: claims.clientId, scopes: ['*'] };
       (request as Request & { user: { id: string; email: string } }).user = { id: claims.sub, email: claims.email };
       augmentRequestContext({ clientId: claims.clientId });

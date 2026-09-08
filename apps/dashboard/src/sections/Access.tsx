@@ -21,6 +21,9 @@ export function Access({ client }: { client: PayMeshClient }) {
     return res.items as Delivery[];
   }, [selectedWebhook]);
 
+  const keyList = keys.data ?? [];
+  const hasActiveKey = keyList.some((k) => k.enabled && !k.revokedAt);
+
   async function createKey() {
     try {
       const result = await client.createApiKey(['deposits', 'quote', 'webhooks']);
@@ -50,8 +53,9 @@ export function Access({ client }: { client: PayMeshClient }) {
       {msg && <div className="notice">{msg}</div>}
 
       <div className="grid">
-        <Card title="API keys" eyebrow="ACCESS" actions={<button onClick={createKey} disabled={!client}>Create key</button>}>
-          <p className="muted">Keys authenticate SDK requests. Plaintext is shown only once.</p>
+        <Card title="API keys" eyebrow="ACCESS" actions={hasActiveKey ? undefined : <button onClick={createKey} disabled={!client}>Create key</button>}>
+          <p className="muted">Keys authenticate SDK requests and belong to this project. One active key per project — revoke it before creating a new one.</p>
+          {hasActiveKey && <div className="notice">A key is active for this project. <strong>Revoke it first</strong> to create a new one.</div>}
           {newKey && (
             <div className="secret secret-create">
               <div><strong>Save this API key now</strong><span>It will only be displayed once.</span></div>

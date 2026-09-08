@@ -35,19 +35,22 @@ export class ProjectsService {
       where: { OR: [{ clientId }, { liveClientId: clientId }] },
       select: { organizationId: true },
     });
-    if (!current) throw new PayMeshError('FORBIDDEN', 'Project access denied', 'The current project is not connected to a workspace.', 403);
-    const organization = await this.prisma.organization.findFirst({ where: { id: current.organizationId, memberships: { some: { userId, status: 'ACTIVE' } } }, select: { id: true } });
+    // Resolve the owning workspace: prefer the current project's org; a fresh
+    // account with no project yet falls back to its first active membership.
+    const organization = current
+      ? await this.prisma.organization.findFirst({ where: { id: current.organizationId, memberships: { some: { userId, status: 'ACTIVE' } } }, select: { id: true } })
+      : await this.prisma.organization.findFirst({ where: { memberships: { some: { userId, status: 'ACTIVE' } } }, orderBy: { createdAt: 'asc' }, select: { id: true } });
     if (!organization) throw new PayMeshError('FORBIDDEN', 'Workspace access denied', 'You do not own this workspace.', 403);
     const testClient = await this.prisma.client.create({ data: { name: name.trim(), environment: 'TEST' } });
     const liveClient = await this.prisma.client.create({ data: { name: name.trim(), environment: 'LIVE' } });
-    const project = await this.prisma.project.create({ data: { organizationId: current.organizationId, name: name.trim(), environment, clientId: testClient.id, liveClientId: liveClient.id }, select: { id: true, name: true, environment: true, clientId: true, liveClientId: true } });
+    const project = await this.prisma.project.create({ data: { organizationId: organization.id, name: name.trim(), environment, clientId: testClient.id, liveClientId: liveClient.id }, select: { id: true, name: true, environment: true, clientId: true, liveClientId: true } });
     await this.recipients.create(testClient.id, { walletAddress: receiverAddress, chainId: destinationChainId, token: destinationToken, settlementType: 'EOA' });
     await this.recipients.create(liveClient.id, { walletAddress: receiverAddress, chainId: destinationChainId, token: destinationToken, settlementType: 'EOA' });
     const apiKey = await this.apiKeys.create(testClient.id, { scopes: ['deposits', 'quote', 'webhooks', 'recipients'] });
     const response = { project, apiKey };
     if (idempotencyKey) {
       const safeResponse = { project, apiKey: { id: apiKey.id, scopes: apiKey.scopes, warning: apiKey.warning } };
-      await this.prisma.idempotencyRecord.create({ data: { key: idempotencyKey, operation: 'project.create', organizationId: current.organizationId, projectId: project.id, response: safeResponse, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) } }).catch(() => undefined);
+      await this.prisma.idempotencyRecord.create({ data: { key: idempotencyKey, operation: 'project.create', organizationId: organization.id, projectId: project.id, response: safeResponse, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) } }).catch(() => undefined);
     }
     return response;
   }

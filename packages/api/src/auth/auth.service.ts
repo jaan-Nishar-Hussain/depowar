@@ -28,10 +28,12 @@ export class AuthService {
     if (exists) throw new ConflictException('An account with this email already exists.');
     const result = await this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({ data: { email: normalizedEmail, passwordHash: passwordHash(password) } });
-      const organization = await tx.organization.create({ data: { name: organizationName.trim(), ownerId: user.id } });
       const testClient = await tx.client.create({ data: { name: organizationName.trim(), environment: 'TEST' } });
-      const liveClient = await tx.client.create({ data: { name: organizationName.trim(), environment: 'LIVE' } });
-      await tx.project.create({ data: { organizationId: organization.id, name: 'Default project', clientId: testClient.id, liveClientId: liveClient.id } });
+      await tx.client.create({ data: { name: organizationName.trim(), environment: 'LIVE' } });
+      // No default project: API keys require an explicitly created project
+      // (PRD §Onboarding). The org remembers its sign-up TEST client so the
+      // session still has a clientId before a project exists.
+      const organization = await tx.organization.create({ data: { name: organizationName.trim(), ownerId: user.id, defaultClientId: testClient.id } });
       await tx.membership.create({ data: { userId: user.id, organizationId: organization.id, role: 'OWNER' } });
       return { user, client: testClient, organization };
     });
@@ -83,10 +85,9 @@ export class AuthService {
     if (existing) return this.sessionForUser(existing.id, existing.email);
     const result = await this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({ data: { email: pending.email, googleId: pending.googleId, passwordHash: '' } });
-      const organization = await tx.organization.create({ data: { name: organizationName.trim(), ownerId: user.id } });
       const testClient = await tx.client.create({ data: { name: organizationName.trim(), environment: 'TEST' } });
-      const liveClient = await tx.client.create({ data: { name: organizationName.trim(), environment: 'LIVE' } });
-      await tx.project.create({ data: { organizationId: organization.id, name: 'Default project', clientId: testClient.id, liveClientId: liveClient.id } });
+      await tx.client.create({ data: { name: organizationName.trim(), environment: 'LIVE' } });
+      const organization = await tx.organization.create({ data: { name: organizationName.trim(), ownerId: user.id, defaultClientId: testClient.id } });
       await tx.membership.create({ data: { userId: user.id, organizationId: organization.id, role: 'OWNER' } });
       return { user, client: testClient, organization };
     });
@@ -129,8 +130,13 @@ export class AuthService {
   sessionForClient(id: string, email: string, clientId: string) { return this.session(id, email, clientId); }
 
   private async sessionForUser(id: string, email: string) {
-    const project = await this.prisma.project.findFirst({ where: { organization: { ownerId: id } }, orderBy: { createdAt: 'asc' }, select: { clientId: true } });
-    if (!project) throw new UnauthorizedException('No project is configured for this account.');
-    return this.session(id, email, project.clientId);
+    const org = await this.prisma.organization.findFirst({
+      where: { memberships: { some: { userId: id, status: 'ACTIVE' } } },
+      orderBy: { createdAt: 'asc' },
+      include: { projects: { select: { clientId: true }, orderBy: { createdAt: 'asc' }, take: 1 } },
+    });
+    const clientId = org?.projects[0]?.clientId ?? org?.defaultClientId;
+    if (!clientId) throw new UnauthorizedException('No project is configured for this account.');
+    return this.session(id, email, clientId);
   }
 }

@@ -32,6 +32,25 @@ export class ApiKeysService {
         400,
       );
     }
+    // One active key per project (PRD §API): a new key can only be minted after
+    // the current one is revoked, so key rotation is an explicit revoke→create.
+    const active = await this.prisma.apiKey.findFirst({
+      where: {
+        clientId,
+        enabled: true,
+        revokedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+      select: { id: true },
+    });
+    if (active) {
+      throw new PayMeshError(
+        'ACTIVE_KEY_EXISTS',
+        'Revoke the current API key before creating a new one',
+        'Revoke the current API key before creating a new one.',
+        409,
+      );
+    }
     const client = await this.prisma.client.findUniqueOrThrow({ where: { id: clientId }, select: { environment: true } });
     const prefix = client.environment === 'LIVE' ? 'dw_live_' : 'dw_test_';
     const key = `${prefix}${randomBytes(24).toString('hex')}`;

@@ -20,6 +20,7 @@ model Client {
   testProject    Project?           @relation("ProjectTestClient")
   liveProject    Project?           @relation("ProjectLiveClient")
   environment    String             @default("TEST")
+  defaultOrg     Organization?      @relation("OrganizationDefaultClient")
 }
 
 model User {
@@ -38,6 +39,10 @@ model Organization {
   name         String
   ownerId      String?
   owner        User?         @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  /// The TEST client created at sign-up for the session before a project is
+  /// created (Next-Gen PRD §Onboarding: keys require an explicit project).
+  defaultClientId String?     @unique
+  defaultClient   Client?     @relation("OrganizationDefaultClient", fields: [defaultClientId], references: [id], onDelete: SetNull)
   memberships  Membership[]
   projects     Project[]
   createdAt    DateTime      @default(now())
