@@ -263,11 +263,15 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
 
   const handleSwipe = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
     if (isSigning || status === 'quoting' || (quote && status !== 'ready') || (!quote && !amount)) return;
-    const rect = event.currentTarget.getBoundingClientRect();
+    // Capture the DOM node now: React nulls `event.currentTarget` after the
+    // handler returns, so the listeners must reference a stable node, not the
+    // synthetic event (which caused a "removeEventListener of null" crash).
+    const el = event.currentTarget;
+    const rect = el.getBoundingClientRect();
     const max = Math.max(0, rect.width - 50);
     const startX = event.clientX;
     const startOffset = swipeOffset;
-    event.currentTarget.setPointerCapture(event.pointerId);
+    el.setPointerCapture(event.pointerId);
     const move = (moveEvent: PointerEvent) => {
       const next = Math.max(0, Math.min(max, startOffset + moveEvent.clientX - startX));
       setSwipeOffset(next);
@@ -275,13 +279,13 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
     };
     const end = () => {
       setSwipeOffset((current) => current >= max * 0.9 ? current : 0);
-      event.currentTarget.removeEventListener('pointermove', move);
-      event.currentTarget.removeEventListener('pointerup', end);
-      event.currentTarget.removeEventListener('pointercancel', end);
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', end);
+      el.removeEventListener('pointercancel', end);
     };
-    event.currentTarget.addEventListener('pointermove', move);
-    event.currentTarget.addEventListener('pointerup', end);
-    event.currentTarget.addEventListener('pointercancel', end);
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
   }, [amount, finishSwipe, isSigning, quote, status, swipeOffset]);
 
   const resetDeposit = useCallback(() => {
