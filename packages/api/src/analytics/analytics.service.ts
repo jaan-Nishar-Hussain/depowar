@@ -5,11 +5,11 @@ import { PrismaService } from '../prisma/prisma.service';
 export class AnalyticsService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  async timeseries(clientId: string, days = 30): Promise<unknown> {
+  async timeseries(projectId: string, days = 30): Promise<unknown> {
     const windowDays = Number.isFinite(days) ? Math.min(365, Math.max(1, Math.trunc(days))) : 30;
     const since = new Date(Date.now() - windowDays * 86_400_000);
     const deposits = await this.prisma.depositIntent.findMany({
-      where: { clientId, createdAt: { gte: since } },
+      where: { projectId, createdAt: { gte: since } },
       select: { id: true, status: true, createdAt: true },
     });
     const settledIds = deposits.filter((d) => d.status === 'SETTLED').map((d) => d.id);
@@ -49,11 +49,11 @@ export class AnalyticsService {
     return { days: windowDays, series: [...buckets.entries()].map(([day, b]) => ({ day, ...b })) };
   }
 
-  async overview(clientId: string, days = 30): Promise<unknown> {
+  async overview(projectId: string, days = 30): Promise<unknown> {
     const windowDays = Number.isFinite(days) ? Math.min(365, Math.max(1, Math.trunc(days))) : 30;
     const since = new Date(Date.now() - windowDays * 86_400_000);
     const deposits = await this.prisma.depositIntent.findMany({
-      where: { clientId, createdAt: { gte: since } },
+      where: { projectId, createdAt: { gte: since } },
       select: { id: true, status: true, toChainId: true, toToken: true, createdAt: true, updatedAt: true },
       orderBy: { createdAt: 'desc' },
     });
@@ -67,7 +67,7 @@ export class AnalyticsService {
     // Provider KPIs (PRD §Monitoring): breakdown of winning routes by provider
     // plus fallback activity, powered by the Quote KPI columns.
     const quotes = await this.prisma.quote.findMany({
-      where: { depositIntent: { clientId } },
+      where: { depositIntent: { projectId } },
       select: { providerId: true, fallbackFromQuoteId: true, createdAt: true, depositIntentId: true, fromChainId: true, fromToken: true },
       orderBy: { createdAt: 'desc' },
       take: 5000,

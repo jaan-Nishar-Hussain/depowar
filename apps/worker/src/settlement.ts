@@ -72,7 +72,7 @@ export async function processSettlement(job: Job<SettlementJobData>, ctx: Worker
     data: { status: 'CONFIRMED', confirmedAt: new Date(), settledAt: new Date() },
   });
   await emitEvent(ctx, {
-    clientId: transaction.quote.depositIntent.clientId,
+    projectId: transaction.quote.depositIntent.projectId,
     type: 'deposit.settled',
     payload: {
       depositId: transaction.depositIntentId,

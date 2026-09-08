@@ -12,19 +12,19 @@ export class WebhooksService {
     @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
-  async create(clientId: string, dto: CreateWebhookDto) {
+  async create(projectId: string, dto: CreateWebhookDto) {
     const secret = dto.secret ?? randomBytes(32).toString('hex');
     const subscription = await this.prisma.webhookSubscription.create({
       data: {
         id: generateId('wh'),
-        clientId,
+        projectId,
         url: dto.url,
         events: dto.events,
         secret,
       },
     });
     await this.audit.record({
-      clientId,
+      projectId,
       actor: 'api',
       action: 'webhook.created',
       entityType: 'WebhookSubscription',
@@ -33,14 +33,14 @@ export class WebhooksService {
     return { id: subscription.id, url: subscription.url, events: subscription.events, secret };
   }
 
-  async list(clientId: string) {
-    return this.prisma.webhookSubscription.findMany({ where: { clientId, enabled: true } });
+  async list(projectId: string) {
+    return this.prisma.webhookSubscription.findMany({ where: { projectId, enabled: true } });
   }
 
   /** Delivery log for a webhook (PRD §Monitoring). Rows are written by the
    * worker's dispatch job (status, attempts, responseCode, lastError). */
-  async deliveries(clientId: string, id: string, limit = 50) {
-    const sub = await this.prisma.webhookSubscription.findFirst({ where: { id, clientId } });
+  async deliveries(projectId: string, id: string, limit = 50) {
+    const sub = await this.prisma.webhookSubscription.findFirst({ where: { id, projectId } });
     if (!sub) {
       return { items: [] };
     }
@@ -53,14 +53,14 @@ export class WebhooksService {
     return { items };
   }
 
-  async remove(clientId: string, id: string) {
-    const sub = await this.prisma.webhookSubscription.findFirst({ where: { id, clientId } });
+  async remove(projectId: string, id: string) {
+    const sub = await this.prisma.webhookSubscription.findFirst({ where: { id, projectId } });
     if (!sub) {
       return { deleted: false };
     }
     await this.prisma.webhookSubscription.delete({ where: { id } });
     await this.audit.record({
-      clientId,
+      projectId,
       actor: 'api',
       action: 'webhook.deleted',
       entityType: 'WebhookSubscription',

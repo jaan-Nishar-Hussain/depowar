@@ -23,7 +23,7 @@ export class EventService {
   ) {}
 
   async emit(
-    clientId: string,
+    projectId: string,
     type: LifecycleEventType,
     payload: Record<string, unknown>,
     depositIntentId?: string,
@@ -31,7 +31,7 @@ export class EventService {
     const event = await this.prisma.event.create({
       data: {
         id: generateId('evt'),
-        clientId,
+        projectId,
         depositIntentId,
         type,
         payload: payload as object,

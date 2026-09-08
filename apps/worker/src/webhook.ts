@@ -25,7 +25,7 @@ export async function processWebhookDispatch(
   if (!event) return;
 
   const subscriptions = await ctx.prisma.webhookSubscription.findMany({
-    where: { clientId: event.clientId, enabled: true },
+    where: { projectId: event.projectId, enabled: true },
     include: { deliveries: { where: { eventId }, orderBy: { createdAt: 'desc' }, take: 1 } },
   });
   const matching = subscriptions.filter((s) => s.events.includes(event.type));
@@ -36,7 +36,7 @@ export async function processWebhookDispatch(
     const body = {
       id: event.id,
       type: event.type,
-      clientId: event.clientId,
+      projectId: event.projectId,
       depositIntentId: event.depositIntentId,
       payload: event.payload,
       timestamp: new Date().toISOString(),

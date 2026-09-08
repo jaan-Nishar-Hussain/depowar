@@ -5,7 +5,7 @@ export interface RequestContext {
   ip?: string;
   userAgent?: string;
   /** Tenant resolved by the API-key guard, for scoped metrics labels. */
-  clientId?: string;
+  projectId?: string;
 }
 
 const storage = new AsyncLocalStorage<RequestContext>();

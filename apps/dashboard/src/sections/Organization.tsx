@@ -3,7 +3,7 @@ import { PayMeshClient } from '@paymesh/sdk';
 import { Card, StatusTag, EmptyState, Spinner, Field } from '../components/ui';
 import { useApi } from '../lib/useApi';
 
-type Project = { id: string; name: string; environment: string; clientId?: string; liveClientId?: string };
+type Project = { id: string; name: string; environment: string };
 type Workspace = { id: string; name: string; projects: Project[] };
 
 export function Organization({ client, onSwitchWorkspace, onSwitchProject, onSessionChange }: {
@@ -47,7 +47,7 @@ export function Organization({ client, onSwitchWorkspace, onSwitchProject, onSes
       return;
     }
     try {
-      const created = await client.createProject(newProjectName.trim(), wallet.trim() as `0x${string}`, chainId, token as 'USDC' | 'USDT');
+      const created = await client.createProject(newProjectName.trim(), wallet.trim() as `0x${string}`, chainId, token as 'USDC' | 'USDT', 'TEST');
       setNewProjectName(''); setWallet('');
       setMsg(`Project "${created.project.name}" created — check the Access tab for its API key.`);
       await onSwitchProject(created.project.id, 'TEST');

@@ -119,8 +119,7 @@ export interface Project {
   id: string;
   name: string;
   environment?: string;
-  clientId?: string;
-  liveClientId?: string;
+  organizationId?: string;
   createdAt?: string;
   _count?: { apiKeys: number; recipients: number; depositIntents: number };
 }

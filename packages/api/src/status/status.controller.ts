@@ -1,6 +1,6 @@
 import { Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import { stringifyBigInts } from '../common/serialize';
-import { Client, Scopes, type ClientContext } from '../auth/decorators';
+import { Project, Scopes, type ProjectContext } from '../auth/decorators';
 import { StatusService } from './status.service';
 
 @Controller()
@@ -9,20 +9,20 @@ export class StatusController {
 
   @Get('status')
   @Scopes('quote', 'deposits')
-  async get(@Client() client: ClientContext, @Query('depositId') depositId: string) {
+  async get(@Project() client: ProjectContext, @Query('depositId') depositId: string) {
     return stringifyBigInts(await this.service.get(client.id, depositId));
   }
 
   @Get('transactions/:id')
   @Scopes('quote', 'deposits')
-  async getTransaction(@Client() client: ClientContext, @Param('id') transactionId: string) {
+  async getTransaction(@Project() client: ProjectContext, @Param('id') transactionId: string) {
     return stringifyBigInts(await this.service.getTransactionById(client.id, transactionId));
   }
 
   @Get('transactions')
   @Scopes('quote', 'deposits')
   async listTransactions(
-    @Client() client: ClientContext,
+    @Project() client: ProjectContext,
     @Query('intentId') intentId?: string,
     @Query('depositId') depositId?: string,
   ) {

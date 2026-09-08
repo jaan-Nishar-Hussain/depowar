@@ -35,9 +35,9 @@ export class QuoteService {
     @Inject(SCREENING_PROVIDER) private readonly screening: ScreeningProvider,
   ) {}
 
-  async quote(clientId: string, query: QuoteQueryDto) {
+  async quote(projectId: string, query: QuoteQueryDto) {
     const deposit = await this.prisma.depositIntent.findFirst({
-      where: { id: query.depositId, clientId },
+      where: { id: query.depositId, projectId },
       include: { recipient: true },
     });
     if (!deposit) {
@@ -192,7 +192,7 @@ export class QuoteService {
       data: { status: 'AWAITING_SIGNATURE' },
     });
 
-    await this.events.emit(clientId, 'quote.ready', { depositId: deposit.id, quoteId }, deposit.id);
+    await this.events.emit(projectId, 'quote.ready', { depositId: deposit.id, quoteId }, deposit.id);
 
     await this.queue.enqueue(QUEUE_QUOTE_EXPIRY, 'expire', { quoteId }, { delay: QUOTE_TTL_SECONDS * 1000 });
 
@@ -232,9 +232,9 @@ export class QuoteService {
    * non-final hops are confirmed before the next call is sent; the final hop
    * is handed to the worker for normal settlement verification.
    */
-  async executeServerCustody(clientId: string, quoteId: string) {
+  async executeServerCustody(projectId: string, quoteId: string) {
     const quote = await this.prisma.quote.findFirst({
-      where: { id: quoteId, depositIntent: { clientId } },
+      where: { id: quoteId, depositIntent: { projectId } },
       include: { depositIntent: true },
     });
     if (!quote) {
@@ -288,7 +288,7 @@ export class QuoteService {
         data: { txHash: hash, status: 'SUBMITTED', submittedAt: new Date() },
       });
       await this.events.emit(
-        clientId,
+        projectId,
         'tx.submitted',
         { depositId: quote.depositIntentId, quoteId, hopIndex: i, txHash: hash },
         quote.depositIntentId,
@@ -320,9 +320,9 @@ export class QuoteService {
   }
 
   /** Records a sender-signed tx for a hop so the worker can monitor it. */
-  async reportSubmission(clientId: string, quoteId: string, dto: ReportTransactionDto) {
+  async reportSubmission(projectId: string, quoteId: string, dto: ReportTransactionDto) {
     const quote = await this.prisma.quote.findFirst({
-      where: { id: quoteId, depositIntent: { clientId } },
+      where: { id: quoteId, depositIntent: { projectId } },
       include: { transactions: { orderBy: { hopIndex: 'asc' } } },
     });
     if (!quote) {
@@ -374,7 +374,7 @@ export class QuoteService {
       data: { status: 'IN_FLIGHT' },
     });
     await this.events.emit(
-      clientId,
+      projectId,
       'tx.submitted',
       { depositId: quote.depositIntentId, quoteId, hopIndex: dto.hopIndex, txHash: dto.txHash },
       quote.depositIntentId,
@@ -477,9 +477,9 @@ export class QuoteService {
     }
   }
 
-  async getQuoteById(clientId: string, quoteId: string) {
+  async getQuoteById(projectId: string, quoteId: string) {
     const quote = await this.prisma.quote.findFirst({
-      where: { id: quoteId, depositIntent: { clientId } },
+      where: { id: quoteId, depositIntent: { projectId } },
       include: {
         depositIntent: true,
         transactions: { orderBy: { hopIndex: 'asc' } },
@@ -491,9 +491,9 @@ export class QuoteService {
     return quote;
   }
 
-  async getQuoteByDepositIntentId(clientId: string, depositIntentId: string) {
+  async getQuoteByDepositIntentId(projectId: string, depositIntentId: string) {
     const quote = await this.prisma.quote.findFirst({
-      where: { depositIntentId, depositIntent: { clientId } },
+      where: { depositIntentId, depositIntent: { projectId } },
       orderBy: { createdAt: 'desc' },
       include: {
         depositIntent: true,
@@ -511,11 +511,11 @@ export class QuoteService {
     return quote;
   }
 
-  async executeDepositIntent(clientId: string, depositIntentId: string) {
+  async executeDepositIntent(projectId: string, depositIntentId: string) {
     const quote = await this.prisma.quote.findFirst({
       where: {
         depositIntentId,
-        depositIntent: { clientId },
+        depositIntent: { projectId },
         status: 'ACTIVE',
         expiresAt: { gt: new Date() },
       },
@@ -529,6 +529,6 @@ export class QuoteService {
         404,
       );
     }
-    return this.executeServerCustody(clientId, quote.id);
+    return this.executeServerCustody(projectId, quote.id);
   }
 }

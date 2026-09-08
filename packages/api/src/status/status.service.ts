@@ -6,9 +6,9 @@ import { PayMeshError } from '../common/errors';
 export class StatusService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  async get(clientId: string, depositId: string): Promise<unknown> {
+  async get(projectId: string, depositId: string): Promise<unknown> {
     const deposit = await this.prisma.depositIntent.findFirst({
-      where: { id: depositId, clientId },
+      where: { id: depositId, projectId },
       include: {
         recipient: true,
         quotes: { orderBy: { createdAt: 'desc' }, take: 10 },
@@ -26,9 +26,9 @@ export class StatusService {
     return deposit;
   }
 
-  async getTransactionById(clientId: string, transactionId: string): Promise<unknown> {
+  async getTransactionById(projectId: string, transactionId: string): Promise<unknown> {
     const tx = await this.prisma.transaction.findFirst({
-      where: { id: transactionId, depositIntent: { clientId } },
+      where: { id: transactionId, depositIntent: { projectId } },
       include: {
         depositIntent: true,
         quote: true,
@@ -45,9 +45,9 @@ export class StatusService {
     return tx;
   }
 
-  async listTransactionsByIntent(clientId: string, intentId: string): Promise<unknown> {
+  async listTransactionsByIntent(projectId: string, intentId: string): Promise<unknown> {
     const deposit = await this.prisma.depositIntent.findFirst({
-      where: { id: intentId, clientId },
+      where: { id: intentId, projectId },
     });
     if (!deposit) {
       throw new PayMeshError(

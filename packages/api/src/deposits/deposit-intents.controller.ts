@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Inject, Param, Post, Query } from '@nestjs/common';
 import { ZodPipe } from '../common/zod.pipe';
 import { stringifyBigInts } from '../common/serialize';
-import { Client, Scopes, type ClientContext } from '../auth/decorators';
+import { Project, Scopes, type ProjectContext } from '../auth/decorators';
 import { CreateDepositIntentSchema, ListDepositIntentsQuery, type CreateDepositIntentDto, type ListDepositIntentsQueryDto } from './dto';
 import { DepositIntentsService } from './deposit-intents.service';
 
@@ -11,31 +11,31 @@ export class DepositIntentsController {
 
   @Post()
   @Scopes('deposits')
-  create(@Client() client: ClientContext, @Body(new ZodPipe(CreateDepositIntentSchema)) dto: CreateDepositIntentDto) {
-    return this.service.create(client.id, dto);
+  create(@Project() project: ProjectContext, @Body(new ZodPipe(CreateDepositIntentSchema)) dto: CreateDepositIntentDto) {
+    return this.service.create(project.id, dto);
   }
 
   @Get()
   @Scopes('deposits', 'quote')
-  async list(@Client() client: ClientContext, @Query(new ZodPipe(ListDepositIntentsQuery)) query: ListDepositIntentsQueryDto) {
-    return stringifyBigInts(await this.service.list(client.id, query));
+  async list(@Project() project: ProjectContext, @Query(new ZodPipe(ListDepositIntentsQuery)) query: ListDepositIntentsQueryDto) {
+    return stringifyBigInts(await this.service.list(project.id, query));
   }
 
   @Get(':id')
   @Scopes('deposits')
-  async findOne(@Client() client: ClientContext, @Param('id') id: string) {
-    return stringifyBigInts(await this.service.findOne(client.id, id));
+  async findOne(@Project() project: ProjectContext, @Param('id') id: string) {
+    return stringifyBigInts(await this.service.findOne(project.id, id));
   }
 
   @Get(':id/recovery')
   @Scopes('deposits')
-  async getRecovery(@Client() client: ClientContext, @Param('id') id: string) {
-    return stringifyBigInts(await this.service.getRecoveryStatus(client.id, id));
+  async getRecovery(@Project() project: ProjectContext, @Param('id') id: string) {
+    return stringifyBigInts(await this.service.getRecoveryStatus(project.id, id));
   }
 
   @Post(':id/retry')
   @Scopes('deposits')
-  async retry(@Client() client: ClientContext, @Param('id') id: string) {
-    return stringifyBigInts(await this.service.retry(client.id, id));
+  async retry(@Project() project: ProjectContext, @Param('id') id: string) {
+    return stringifyBigInts(await this.service.retry(project.id, id));
   }
 }

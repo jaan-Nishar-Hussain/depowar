@@ -86,7 +86,7 @@ export async function processTxMonitor(job: Job<MonitorJobData>, ctx: WorkerCont
     data: { status: terminalSettlement ? 'SETTLEMENT_PENDING' : 'CONFIRMED', confirmedAt: terminalSettlement ? undefined : new Date() },
   });
   await emitEvent(ctx, {
-    clientId: transaction.quote.depositIntent.clientId,
+    projectId: transaction.quote.depositIntent.projectId,
     type: 'tx.confirmed',
     payload: {
       depositId: transaction.depositIntentId,
@@ -104,7 +104,7 @@ export async function processTxMonitor(job: Job<MonitorJobData>, ctx: WorkerCont
       data: { status: 'AWAITING_SIGNATURE' },
     });
     await emitEvent(ctx, {
-      clientId: transaction.quote.depositIntent.clientId,
+      projectId: transaction.quote.depositIntent.projectId,
       type: 'quote.ready',
       payload: {
         depositId: transaction.depositIntentId,
@@ -433,7 +433,7 @@ export async function processFallback(
   });
 
   await emitEvent(ctx, {
-    clientId: deposit.clientId,
+    projectId: deposit.projectId,
     type: 'quote.ready',
     payload: { depositId, quoteId: newQuoteId, fallbackFrom: quoteId },
     depositIntentId: depositId,
@@ -450,7 +450,7 @@ export async function failDeposit(
   const deposit = await ctx.prisma.depositIntent.findUnique({ where: { id: depositId } });
   if (deposit) {
     await emitEvent(ctx, {
-      clientId: deposit.clientId,
+      projectId: deposit.projectId,
       type: 'deposit.failed',
       payload: { depositId, quoteId, errorCode },
       depositIntentId: depositId,

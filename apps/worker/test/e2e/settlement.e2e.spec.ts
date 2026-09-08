@@ -98,13 +98,14 @@ beforeAll(async () => {
   await new Promise<void>((resolve) => webhookServer.listen(0, resolve));
   webhookPort = (webhookServer.address() as { port: number }).port;
 
-  const client = await prisma.client.create({ data: { name: 'worker-e2e' } });
+  const org = await prisma.organization.create({ data: { name: 'worker-e2e' } });
+  const project = await prisma.project.create({ data: { organizationId: org.id, name: 'worker-e2e', environment: 'TEST' } });
   await prisma.apiKey.create({
-    data: { clientId: client.id, keyPrefix: API_KEY.slice(0, 12), keyHash: hashApiKey(API_KEY), scopes: ['*'] },
+    data: { projectId: project.id, keyPrefix: API_KEY.slice(0, 12), keyHash: hashApiKey(API_KEY), scopes: ['*'] },
   });
   await prisma.webhookSubscription.create({
     data: {
-      clientId: client.id,
+      projectId: project.id,
       url: `http://127.0.0.1:${webhookPort}/hooks`,
       events: ['quote.ready', 'tx.confirmed', 'deposit.settled', 'deposit.failed'],
       secret: 'worker-e2e-secret',
@@ -128,15 +129,16 @@ afterAll(async () => {
 });
 
 async function createDepositWithQuote(fromToken: Address, fromAmount: bigint, txHash0?: Address) {
+  const project = await prisma.project.findFirstOrThrow();
   const recipient = await prisma.recipient.create({
     data: {
-      clientId: (await prisma.client.findFirstOrThrow()).id,
+      projectId: project.id,
       walletAddress: src.deployer,
     },
   });
   const deposit = await prisma.depositIntent.create({
     data: {
-      clientId: (await prisma.client.findFirstOrThrow()).id,
+      projectId: project.id,
       recipientId: recipient.id,
       idempotencyKey: `e2e-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       toChainId: 31338,

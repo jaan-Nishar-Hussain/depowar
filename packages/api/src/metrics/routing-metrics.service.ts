@@ -44,8 +44,8 @@ export class RoutingMetricsService {
       ...base,
       recordQuoteLatency: (durationMs: number, outcome: QuoteOutcome) => {
         base.recordQuoteLatency(durationMs, outcome);
-        const clientId = getRequestContext()?.clientId ?? 'anonymous';
-        const key = `routing_quote_requests_total{client_id="${safe(clientId)}",outcome="${outcome}"}`;
+        const projectId = getRequestContext()?.projectId ?? 'anonymous';
+        const key = `routing_quote_requests_total{client_id="${safe(projectId)}",outcome="${outcome}"}`;
         this.requestCounters[key] = (this.requestCounters[key] ?? 0) + 1;
       },
     };

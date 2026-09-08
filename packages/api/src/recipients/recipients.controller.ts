@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Inject, Param, Post, Put } from '@nestjs/common';
 import { ZodPipe } from '../common/zod.pipe';
 import { stringifyBigInts } from '../common/serialize';
-import { Client, Scopes, type ClientContext } from '../auth/decorators';
+import { Project, Scopes, type ProjectContext } from '../auth/decorators';
 import { CreateRecipientSchema, SettlementUpdateSchema, type CreateRecipientDto, type SettlementUpdateDto } from './dto';
 import { RecipientsService } from './recipients.service';
 
@@ -11,29 +11,29 @@ export class RecipientsController {
 
   @Get()
   @Scopes('management')
-  async list(@Client() client: ClientContext) {
-    return stringifyBigInts(await this.service.list(client.id));
+  async list(@Project() project: ProjectContext) {
+    return stringifyBigInts(await this.service.list(project.id));
   }
 
   @Post()
   @Scopes('management')
-  async create(@Client() client: ClientContext, @Body(new ZodPipe(CreateRecipientSchema)) dto: CreateRecipientDto) {
-    return stringifyBigInts(await this.service.create(client.id, dto));
+  async create(@Project() project: ProjectContext, @Body(new ZodPipe(CreateRecipientSchema)) dto: CreateRecipientDto) {
+    return stringifyBigInts(await this.service.create(project.id, dto));
   }
 
   @Get(':id')
   @Scopes('recipients')
-  async get(@Client() client: ClientContext, @Param('id') id: string) {
-    return stringifyBigInts(await this.service.get(client.id, id));
+  async get(@Project() project: ProjectContext, @Param('id') id: string) {
+    return stringifyBigInts(await this.service.get(project.id, id));
   }
 
   @Put(':id/settlement')
   @Scopes('recipients')
   async updateSettlement(
-    @Client() client: ClientContext,
+    @Project() project: ProjectContext,
     @Param('id') id: string,
     @Body(new ZodPipe(SettlementUpdateSchema)) dto: SettlementUpdateDto,
   ) {
-    return stringifyBigInts(await this.service.updateSettlement(client.id, id, dto));
+    return stringifyBigInts(await this.service.updateSettlement(project.id, id, dto));
   }
 }

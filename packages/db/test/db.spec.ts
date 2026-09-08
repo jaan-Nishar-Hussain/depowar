@@ -28,13 +28,14 @@ describe('db', () => {
       });
 
       const prisma = new PrismaClient({ datasources: { db: { url } } });
-      const client = await prisma.client.create({ data: { name: 'test-client' } });
-      const found = await prisma.client.findUnique({ where: { id: client.id } });
-      expect(found?.name).toBe('test-client');
+      const org = await prisma.organization.create({ data: { name: 'test-org' } });
+      const project = await prisma.project.create({ data: { organizationId: org.id, name: 'test-project', environment: 'TEST' } });
+      const found = await prisma.project.findUnique({ where: { id: project.id } });
+      expect(found?.name).toBe('test-project');
 
       const recipient = await prisma.recipient.create({
         data: {
-          clientId: client.id,
+          projectId: project.id,
           walletAddress: '0x0000000000000000000000000000000000000001',
         },
       });

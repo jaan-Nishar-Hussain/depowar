@@ -13,7 +13,7 @@ const SECTIONS = ['overview', 'deposits', 'recipients', 'access', 'analytics', '
 type Section = typeof SECTIONS[number];
 
 type Project = { id: string; name: string; environment?: string };
-type Workspace = { id: string; name: string; projects: Array<{ id: string; name: string; clientId?: string; liveClientId?: string }> };
+type Workspace = { id: string; name: string; projects: Array<{ id: string; name: string; environment?: string }> };
 
 function authFromHash() {
   const params = new URLSearchParams(window.location.hash.slice(1));
@@ -35,7 +35,7 @@ export function App() {
   // Sidebar data (project + workspace/project lists for the switchers).
   const projectData = useApi(client, (c) => c.getProject() as Promise<Project>);
   const workspacesData = useApi(client, (c) => c.listWorkspaces() as Promise<Workspace[]>);
-  const projectsData = useApi(client, (c) => c.listProjects() as Promise<Array<Project & { clientId?: string; liveClientId?: string }>>);
+  const projectsData = useApi(client, (c) => c.listProjects() as Promise<Project[]>);
 
   const project = projectData.data;
   const workspaces = workspacesData.data ?? [];
@@ -44,9 +44,9 @@ export function App() {
   useEffect(() => {
     if (!project) return;
     setEnvironmentMode(project.environment === 'LIVE' ? 'LIVE' : 'TEST');
-    const currentWorkspace = workspaces.find((w) => w.projects.some((p) => p.clientId === project.id || p.liveClientId === project.id));
+    const currentWorkspace = workspaces.find((w) => w.projects.some((p) => p.id === project.id));
     if (currentWorkspace && !workspaceId) setWorkspaceId(currentWorkspace.id);
-    const currentProject = projects.find((p) => p.clientId === project.id || p.liveClientId === project.id);
+    const currentProject = projects.find((p) => p.id === project.id);
     if (currentProject && !projectId) setProjectId(currentProject.id);
   }, [project, workspaces, projects, workspaceId, projectId]);
 

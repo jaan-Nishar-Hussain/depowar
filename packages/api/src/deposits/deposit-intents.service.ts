@@ -17,7 +17,7 @@ export class DepositIntentsService {
     @Inject(ENV) private readonly env: AppEnv,
   ) {}
 
-  async create(clientId: string, dto: CreateDepositIntentDto) {
+  async create(projectId: string, dto: CreateDepositIntentDto) {
     const destinationChainIds = getDestinationChainIds(this.env);
     if (!destinationChainIds.includes(dto.toChain)) {
       throw new PayMeshError(
@@ -38,12 +38,12 @@ export class DepositIntentsService {
       );
     }
     const recipient = await this.prisma.recipient.findFirst({
-      where: { id: dto.recipientId, clientId },
+      where: { id: dto.recipientId, projectId },
     });
     if (!recipient) {
       throw new PayMeshError(
         'RECIPIENT_NOT_FOUND',
-        `Recipient ${dto.recipientId} not found for client`,
+        `Recipient ${dto.recipientId} not found for project`,
         'The recipient does not exist.',
         404,
       );
@@ -60,7 +60,7 @@ export class DepositIntentsService {
     const deposit = await this.prisma.depositIntent.create({
       data: {
         id: generateId('dep'),
-        clientId,
+        projectId,
         recipientId: recipient.id,
         idempotencyKey,
         toChainId: dto.toChain,
@@ -72,7 +72,7 @@ export class DepositIntentsService {
     });
 
     await this.audit.record({
-      clientId,
+      projectId,
       actor: 'api',
       action: 'deposit-intent.created',
       entityType: 'DepositIntent',
@@ -88,16 +88,16 @@ export class DepositIntentsService {
    * per-deposit transaction counts. Enriched by the newest quote so the list
    * shows what was actually sent (from chain/token/amount) per deposit.
    */
-  async list(clientId: string, query: ListDepositIntentsQueryDto): Promise<unknown> {
+  async list(projectId: string, query: ListDepositIntentsQueryDto): Promise<unknown> {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
     const where: {
-      clientId: string;
+      projectId: string;
       status?: string;
       toChainId?: number;
       createdAt?: { gte?: Date; lte?: Date };
       OR?: Array<{ id?: { contains: string }; recipient?: { walletAddress?: { contains: string } } }>;
-    } = { clientId };
+    } = { projectId };
     if (query.status) where.status = query.status;
     if (query.toChainId) where.toChainId = query.toChainId;
     if (query.fromDate || query.toDate) {
@@ -156,9 +156,9 @@ export class DepositIntentsService {
     return { items, total, page, limit };
   }
 
-  async findOne(clientId: string, depositId: string): Promise<unknown> {
+  async findOne(projectId: string, depositId: string): Promise<unknown> {
     const deposit = await this.prisma.depositIntent.findFirst({
-      where: { id: depositId, clientId },
+      where: { id: depositId, projectId },
       include: {
         recipient: true,
         quotes: { orderBy: { createdAt: 'desc' }, take: 5 },
@@ -176,9 +176,9 @@ export class DepositIntentsService {
     return deposit;
   }
 
-  async getRecoveryStatus(clientId: string, depositId: string) {
+  async getRecoveryStatus(projectId: string, depositId: string) {
     const deposit = await this.prisma.depositIntent.findFirst({
-      where: { id: depositId, clientId },
+      where: { id: depositId, projectId },
       include: {
         quotes: { orderBy: { createdAt: 'desc' }, take: 1 },
         transactions: { orderBy: { hopIndex: 'asc' } },
@@ -215,9 +215,9 @@ export class DepositIntentsService {
     };
   }
 
-  async retry(clientId: string, depositId: string) {
+  async retry(projectId: string, depositId: string) {
     const deposit = await this.prisma.depositIntent.findFirst({
-      where: { id: depositId, clientId },
+      where: { id: depositId, projectId },
       include: {
         transactions: { orderBy: { hopIndex: 'asc' } },
         quotes: { orderBy: { createdAt: 'desc' }, take: 1 },
@@ -236,7 +236,7 @@ export class DepositIntentsService {
     });
 
     await this.audit.record({
-      clientId,
+      projectId,
       actor: 'api',
       action: 'deposit-intent.retried',
       entityType: 'DepositIntent',

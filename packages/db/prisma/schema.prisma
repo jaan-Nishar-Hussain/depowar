@@ -7,22 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// Integrator / tenant that owns API keys and webhooks.
-model Client {
-  id             String             @id @default(cuid())
-  name           String
-  apiKeys        ApiKey[]
-  webhooks       WebhookSubscription[]
-  recipients     Recipient[]
-  depositIntents DepositIntent[]
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  testProject    Project?           @relation("ProjectTestClient")
-  liveProject    Project?           @relation("ProjectLiveClient")
-  environment    String             @default("TEST")
-  defaultOrg     Organization?      @relation("OrganizationDefaultClient")
-}
-
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -34,15 +18,12 @@ model User {
   memberships  Membership[]
 }
 
+/// Workspace: a team + billing boundary. A user belongs via Membership.
 model Organization {
   id           String        @id @default(cuid())
   name         String
   ownerId      String?
   owner        User?         @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  /// The TEST client created at sign-up for the session before a project is
-  /// created (Next-Gen PRD §Onboarding: keys require an explicit project).
-  defaultClientId String?     @unique
-  defaultClient   Client?     @relation("OrganizationDefaultClient", fields: [defaultClientId], references: [id], onDelete: SetNull)
   memberships  Membership[]
   projects     Project[]
   createdAt    DateTime      @default(now())
@@ -65,24 +46,30 @@ model Membership {
   @@index([userId, status])
 }
 
+/// Project: the scoping unit. API keys, receivers, webhooks and deposits all
+/// belong to a Project. A project is TEST or LIVE — create a TEST project and
+/// a LIVE sibling for the same integration (PRD §Onboarding: keys require an
+/// explicitly created project; one active key per project).
 model Project {
   id             String       @id @default(cuid())
   organizationId String
   name           String
-  environment    String       @default("DEVELOPMENT")
-  clientId       String       @unique
+  environment    String       @default("TEST") // TEST | LIVE
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  client         Client       @relation("ProjectTestClient", fields: [clientId], references: [id], onDelete: Cascade)
-  liveClientId   String?      @unique
-  liveClient     Client?      @relation("ProjectLiveClient", fields: [liveClientId], references: [id], onDelete: Cascade)
+  apiKeys        ApiKey[]
+  recipients     Recipient[]
+  depositIntents DepositIntent[]
+  webhooks       WebhookSubscription[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, environment])
 }
 
 model ApiKey {
   id         String    @id @default(cuid())
-  clientId   String
-  client     Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  projectId  String
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   keyPrefix  String
   keyHash    String    @unique
   name       String?
@@ -95,14 +82,14 @@ model ApiKey {
   updatedAt  DateTime  @updatedAt
   revokedAt DateTime?
 
-  @@index([clientId, enabled])
+  @@index([projectId, enabled])
 }
 
 /// Recipient: where and how funds settle (PRD §8).
 model Recipient {
   id                String             @id @default(cuid())
-  clientId          String
-  client            Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  projectId         String
+  project           Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
   walletAddress     String
   settlementType    String             @default("EOA") // EOA | CONTRACT
   preferredChainId  Int?
@@ -137,8 +124,8 @@ model SettlementConfig {
 /// Created before a sender pays; represents "what should happen" (PRD §8).
 model DepositIntent {
   id             String        @id @default(cuid())
-  clientId       String
-  client         Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  projectId      String
+  project        Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   recipientId    String
   recipient      Recipient     @relation(fields: [recipientId], references: [id])
   idempotencyKey String        @unique
@@ -227,8 +214,8 @@ model Transaction {
 
 model WebhookSubscription {
   id        String   @id @default(cuid())
-  clientId  String
-  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   url       String
   events    String[] // quote.ready | tx.submitted | deposit.settled | deposit.failed
   secret    String
@@ -240,7 +227,7 @@ model WebhookSubscription {
 /// Lifecycle event queue consumed by the webhook-dispatch worker.
 model Event {
   id              String   @id @default(cuid())
-  clientId        String
+  projectId       String
   depositIntentId String?
   type            String // quote.ready | tx.submitted | deposit.settled | deposit.failed
   payload         Json
@@ -249,7 +236,7 @@ model Event {
 
 model AuditLog {
   id         String   @id @default(cuid())
-  clientId   String?
+  projectId  String?
   actor      String?
   action     String
   entityType String?
@@ -306,7 +293,6 @@ model AnalyticsDaily {
   id             String   @id @default(cuid())
   organizationId String
   projectId      String
-  clientId       String
   day            DateTime
   deposits       Int      @default(0)
   settled        Int      @default(0)
@@ -316,6 +302,6 @@ model AnalyticsDaily {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  @@unique([projectId, clientId, day])
+  @@unique([projectId, day])
   @@index([organizationId, projectId, day])
 }

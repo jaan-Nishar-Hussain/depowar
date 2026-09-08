@@ -13,5 +13,5 @@ export class WorkspacesController {
   constructor(@Inject(WorkspacesService) private readonly workspaces: WorkspacesService, @Inject(AuthService) private readonly auth: AuthService) {}
   @Get() @Scopes('management') list(@CurrentUser() user: UserContext) { return this.workspaces.list(user.id); }
   @Post() @Scopes('management') create(@CurrentUser() user: UserContext, @Body(new ZodPipe(WorkspaceSchema)) dto: WorkspaceDto) { return this.workspaces.create(user.id, dto.name); }
-  @Post('switch') @Scopes('management') async switchWorkspace(@CurrentUser() user: UserContext, @Body(new ZodPipe(z.object({ organizationId: z.string().min(1) }))) dto: { organizationId: string }) { const selected = await this.workspaces.switch(user.id, dto.organizationId); return this.auth.sessionForClient(user.id, user.email, selected.clientId); }
+  @Post('switch') @Scopes('management') async switchWorkspace(@CurrentUser() user: UserContext, @Body(new ZodPipe(z.object({ organizationId: z.string().min(1) }))) dto: { organizationId: string }) { const selected = await this.workspaces.switch(user.id, dto.organizationId); return this.auth.sessionForProject(user.id, user.email, selected.organizationId, selected.projectId); }
 }

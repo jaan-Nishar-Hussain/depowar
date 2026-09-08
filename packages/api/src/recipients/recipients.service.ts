@@ -18,15 +18,15 @@ export class RecipientsService {
     @Inject(SCREENING_PROVIDER) private readonly screening: ScreeningProvider,
   ) {}
 
-  async list(clientId: string): Promise<unknown> {
+  async list(projectId: string): Promise<unknown> {
     return this.prisma.recipient.findMany({
-      where: { clientId },
+      where: { projectId },
       include: { settlementConfigs: { where: { enabled: true } } },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async create(clientId: string, dto: CreateRecipientDto): Promise<unknown> {
+  async create(projectId: string, dto: CreateRecipientDto): Promise<unknown> {
     const screening = await this.screening.screen({ walletAddress: dto.walletAddress });
     if (!screening.allowed) {
       throw new PayMeshError('FORBIDDEN', 'Receiver screening failed', 'This receiver address cannot be used.', 422);
@@ -54,7 +54,7 @@ export class RecipientsService {
     const recipient = await this.prisma.recipient.create({
       data: {
         id: generateId('rec'),
-        clientId,
+        projectId,
         walletAddress: dto.walletAddress,
         settlementType: dto.settlementType,
         preferredChainId: dto.chainId,
@@ -74,13 +74,13 @@ export class RecipientsService {
       },
       include: { settlementConfigs: true },
     });
-    await this.audit.record({ clientId, actor: 'api', action: 'recipient.created', entityType: 'Recipient', entityId: recipient.id, details: { chainId: dto.chainId, token } });
+    await this.audit.record({ projectId, actor: 'api', action: 'recipient.created', entityType: 'Recipient', entityId: recipient.id, details: { chainId: dto.chainId, token } });
     return recipient;
   }
 
-  async get(clientId: string, id: string): Promise<unknown> {
+  async get(projectId: string, id: string): Promise<unknown> {
     const recipient = await this.prisma.recipient.findFirst({
-      where: { id, clientId },
+      where: { id, projectId },
       include: { settlementConfigs: { where: { enabled: true } } },
     });
     if (!recipient) {
@@ -89,8 +89,8 @@ export class RecipientsService {
     return recipient;
   }
 
-  async updateSettlement(clientId: string, id: string, dto: SettlementUpdateDto): Promise<unknown> {
-    const recipient = await this.prisma.recipient.findFirst({ where: { id, clientId } });
+  async updateSettlement(projectId: string, id: string, dto: SettlementUpdateDto): Promise<unknown> {
+    const recipient = await this.prisma.recipient.findFirst({ where: { id, projectId } });
     if (!recipient) {
       throw new PayMeshError('RECIPIENT_NOT_FOUND', `Recipient ${id} not found`, 'The recipient does not exist.', 404);
     }
@@ -109,7 +109,7 @@ export class RecipientsService {
     });
 
     await this.audit.record({
-      clientId,
+      projectId,
       actor: 'api',
       action: 'recipient.settlement.updated',
       entityType: 'Recipient',

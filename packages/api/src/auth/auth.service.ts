@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ENV } from '../common/tokens';
 import type { AppEnv } from '@paymesh/config';
 
-type Claims = { sub: string; clientId: string; email: string; iat: number; exp: number };
+type Claims = { sub: string; projectId: string | null; orgId: string; email: string; iat: number; exp: number };
 
 function passwordHash(password: string, salt = randomBytes(16).toString('hex')) {
   return `${salt}:${scryptSync(password, salt, 64).toString('hex')}`;
@@ -28,16 +28,13 @@ export class AuthService {
     if (exists) throw new ConflictException('An account with this email already exists.');
     const result = await this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({ data: { email: normalizedEmail, passwordHash: passwordHash(password) } });
-      const testClient = await tx.client.create({ data: { name: organizationName.trim(), environment: 'TEST' } });
-      await tx.client.create({ data: { name: organizationName.trim(), environment: 'LIVE' } });
-      // No default project: API keys require an explicitly created project
-      // (PRD §Onboarding). The org remembers its sign-up TEST client so the
-      // session still has a clientId before a project exists.
-      const organization = await tx.organization.create({ data: { name: organizationName.trim(), ownerId: user.id, defaultClientId: testClient.id } });
+      const organization = await tx.organization.create({ data: { name: organizationName.trim(), ownerId: user.id } });
       await tx.membership.create({ data: { userId: user.id, organizationId: organization.id, role: 'OWNER' } });
-      return { user, client: testClient, organization };
+      return { user, organization };
     });
-    return this.session(result.user.id, result.user.email, result.client.id);
+    // No project yet: API keys require an explicitly created project. The
+    // session is bound to the organization with projectId = null.
+    return this.session(result.user.id, result.user.email, result.organization.id, null);
   }
 
   async login(email: string, password: string) {
@@ -85,13 +82,11 @@ export class AuthService {
     if (existing) return this.sessionForUser(existing.id, existing.email);
     const result = await this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({ data: { email: pending.email, googleId: pending.googleId, passwordHash: '' } });
-      const testClient = await tx.client.create({ data: { name: organizationName.trim(), environment: 'TEST' } });
-      await tx.client.create({ data: { name: organizationName.trim(), environment: 'LIVE' } });
-      const organization = await tx.organization.create({ data: { name: organizationName.trim(), ownerId: user.id, defaultClientId: testClient.id } });
+      const organization = await tx.organization.create({ data: { name: organizationName.trim(), ownerId: user.id } });
       await tx.membership.create({ data: { userId: user.id, organizationId: organization.id, role: 'OWNER' } });
-      return { user, client: testClient, organization };
+      return { user, organization };
     });
-    return this.session(result.user.id, result.user.email, result.client.id);
+    return this.session(result.user.id, result.user.email, result.organization.id, null);
   }
 
   private onboardingToken(googleId: string, email: string) {
@@ -119,24 +114,23 @@ export class AuthService {
     return claims;
   }
 
-  private session(id: string, email: string, clientId: string) {
+  private session(id: string, email: string, orgId: string, projectId: string | null) {
     const now = Math.floor(Date.now() / 1000);
     const header = base64(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-    const payload = base64(JSON.stringify({ sub: id, clientId, email, iat: now, exp: now + 60 * 60 * 24 * 7 }));
+    const payload = base64(JSON.stringify({ sub: id, projectId, orgId, email, iat: now, exp: now + 60 * 60 * 24 * 7 }));
     const signature = base64(createHmac('sha256', this.env.AUTH_JWT_SECRET).update(`${header}.${payload}`).digest());
-    return { accessToken: `${header}.${payload}.${signature}`, user: { id, email }, clientId };
+    return { accessToken: `${header}.${payload}.${signature}`, user: { id, email }, orgId, projectId };
   }
 
-  sessionForClient(id: string, email: string, clientId: string) { return this.session(id, email, clientId); }
+  sessionForProject(id: string, email: string, orgId: string, projectId: string | null) { return this.session(id, email, orgId, projectId); }
 
   private async sessionForUser(id: string, email: string) {
     const org = await this.prisma.organization.findFirst({
       where: { memberships: { some: { userId: id, status: 'ACTIVE' } } },
       orderBy: { createdAt: 'asc' },
-      include: { projects: { select: { clientId: true }, orderBy: { createdAt: 'asc' }, take: 1 } },
+      include: { projects: { select: { id: true }, orderBy: { createdAt: 'asc' }, take: 1 } },
     });
-    const clientId = org?.projects[0]?.clientId ?? org?.defaultClientId;
-    if (!clientId) throw new UnauthorizedException('No project is configured for this account.');
-    return this.session(id, email, clientId);
+    if (!org) throw new UnauthorizedException('No organization is configured for this account.');
+    return this.session(id, email, org.id, org.projects[0]?.id ?? null);
   }
 }

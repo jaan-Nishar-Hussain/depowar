@@ -9,7 +9,8 @@ export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
 /** Requires the API key to carry at least one of the given scopes. */
 export const Scopes = (...scopes: string[]) => SetMetadata(SCOPES_KEY, scopes);
 
-export interface ClientContext {
+/** The authenticated project (scoping unit for keys/receivers/deposits). */
+export interface ProjectContext {
   id: string;
   scopes: string[];
 }
@@ -21,8 +22,8 @@ export const CurrentUser = createParamDecorator((_data: unknown, ctx: ExecutionC
   return request.user as UserContext;
 });
 
-/** Request-scoped client authenticated by the API key guard. */
-export const Client = createParamDecorator((_data: unknown, ctx: ExecutionContext): ClientContext => {
+/** Request-scoped project authenticated by the API key guard (Project-first). */
+export const Project = createParamDecorator((_data: unknown, ctx: ExecutionContext): ProjectContext => {
   const request = ctx.switchToHttp().getRequest();
-  return request.client as ClientContext;
+  return request.project as ProjectContext;
 });

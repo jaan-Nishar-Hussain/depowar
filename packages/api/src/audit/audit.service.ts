@@ -7,7 +7,7 @@ export class AuditService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   record(input: {
-    clientId?: string;
+    projectId?: string;
     actor?: string;
     action: string;
     entityType?: string;
@@ -23,7 +23,7 @@ export class AuditService {
     return this.prisma.auditLog
       .create({
         data: {
-          clientId: input.clientId,
+          projectId: input.projectId,
           actor: input.actor,
           action: input.action,
           entityType: input.entityType,

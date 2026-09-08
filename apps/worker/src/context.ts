@@ -16,7 +16,7 @@ export interface WorkerContext {
 export async function emitEvent(
   ctx: WorkerContext,
   input: {
-    clientId: string;
+    projectId: string;
     type: LifecycleEventType;
     payload: Record<string, unknown>;
     depositIntentId?: string;
@@ -24,7 +24,7 @@ export async function emitEvent(
 ): Promise<string> {
   const event = await ctx.prisma.event.create({
     data: {
-      clientId: input.clientId,
+      projectId: input.projectId,
       depositIntentId: input.depositIntentId,
       type: input.type,
       payload: input.payload as object,

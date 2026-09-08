@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Inject, Param, Post } from '@nestjs/common';
 import { ZodPipe } from '../common/zod.pipe';
-import { Client, Scopes, type ClientContext } from '../auth/decorators';
+import { Project, Scopes, type ProjectContext } from '../auth/decorators';
 import { CreateWebhookSchema, type CreateWebhookDto } from './dto';
 import { WebhooksService } from './webhooks.service';
 
@@ -10,25 +10,25 @@ export class WebhooksController {
 
   @Post()
   @Scopes('webhooks')
-  create(@Client() client: ClientContext, @Body(new ZodPipe(CreateWebhookSchema)) dto: CreateWebhookDto) {
+  create(@Project() client: ProjectContext, @Body(new ZodPipe(CreateWebhookSchema)) dto: CreateWebhookDto) {
     return this.service.create(client.id, dto);
   }
 
   @Get()
   @Scopes('webhooks')
-  list(@Client() client: ClientContext) {
+  list(@Project() client: ProjectContext) {
     return this.service.list(client.id);
   }
 
   @Get(':id/deliveries')
   @Scopes('webhooks')
-  async deliveries(@Client() client: ClientContext, @Param('id') id: string) {
+  async deliveries(@Project() client: ProjectContext, @Param('id') id: string) {
     return this.service.deliveries(client.id, id);
   }
 
   @Delete(':id')
   @Scopes('webhooks')
-  remove(@Client() client: ClientContext, @Param('id') id: string) {
+  remove(@Project() client: ProjectContext, @Param('id') id: string) {
     return this.service.remove(client.id, id);
   }
 }
