@@ -6,7 +6,12 @@ import { useApi } from '../lib/useApi';
 type Project = { id: string; name: string; environment: string; clientId?: string; liveClientId?: string };
 type Workspace = { id: string; name: string; projects: Project[] };
 
-export function Organization({ client, onSessionChange }: { client: PayMeshClient; onSessionChange: () => Promise<void> }) {
+export function Organization({ client, onSwitchWorkspace, onSwitchProject, onSessionChange }: {
+  client: PayMeshClient;
+  onSwitchWorkspace: (id: string) => Promise<void>;
+  onSwitchProject: (projectId: string, environment: 'TEST' | 'LIVE') => Promise<void>;
+  onSessionChange: () => Promise<void>;
+}) {
   const [orgName, setOrgName] = useState('');
   const [newProjectName, setNewProjectName] = useState('');
   const [wallet, setWallet] = useState('');
@@ -33,7 +38,7 @@ export function Organization({ client, onSessionChange }: { client: PayMeshClien
     catch (e) { setMsg(e instanceof Error ? e.message : 'Unable to create workspace.'); }
   }
   async function switchWorkspace(id: string) {
-    try { await client.switchWorkspace(id); setMsg('Switched workspace.'); await onSessionChange(); }
+    try { await onSwitchWorkspace(id); setMsg('Switched workspace.'); }
     catch (e) { setMsg(e instanceof Error ? e.message : 'Unable to switch.'); }
   }
   async function createProject() {
@@ -45,7 +50,7 @@ export function Organization({ client, onSessionChange }: { client: PayMeshClien
       const created = await client.createProject(newProjectName.trim(), wallet.trim() as `0x${string}`, chainId, token as 'USDC' | 'USDT');
       setNewProjectName(''); setWallet('');
       setMsg(`Project "${created.project.name}" created — check the Access tab for its API key.`);
-      await workspaces.refresh();
+      await onSwitchProject(created.project.id, 'TEST');
       await onSessionChange();
     } catch (e) { setMsg(e instanceof Error ? e.message : 'Unable to create project.'); }
   }

@@ -25,9 +25,6 @@ export function App() {
   const [authToken, setAuthToken] = useState(() => localStorage.getItem('paymesh_auth_token') ?? authFromHash().token);
   const [onboardingToken, setOnboardingToken] = useState(() => authFromHash().onboardingToken);
   const [authEmail, setAuthEmail] = useState(() => localStorage.getItem('paymesh_auth_email') ?? (authFromHash().email || 'Signed-in user'));
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [organizationName, setOrganizationName] = useState('');
   const [client, setClient] = useState<PayMeshClient | null>(null);
   const [workspaceId, setWorkspaceId] = useState('');
@@ -74,22 +71,8 @@ export function App() {
     setClient(new PayMeshClient({ baseUrl: API_URL, authToken }));
   }, [authToken]);
 
-  async function authenticate() {
-    setMessage(authMode === 'login' ? 'Signing in…' : 'Creating your account…');
-    try {
-      const response = await fetch(`${API_URL}/v1/auth/${authMode}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(authMode === 'login' ? { email, password } : { email, password, organizationName }) });
-      const body = await response.json() as { accessToken?: string; error?: { userMessage?: string } };
-      if (!response.ok || !body.accessToken) throw new Error(body.error?.userMessage ?? 'Unable to authenticate.');
-      localStorage.setItem('paymesh_auth_token', body.accessToken);
-      localStorage.setItem('paymesh_auth_email', email.trim().toLowerCase());
-      setAuthEmail(email.trim().toLowerCase());
-      setAuthToken(body.accessToken);
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to authenticate.'); }
-  }
-
   async function completeGoogleOnboarding() {
     if (!onboardingToken || !organizationName.trim()) return;
-    setMessage('Setting up your organization…');
     try {
       const response = await fetch(`${API_URL}/v1/auth/google/complete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ onboardingToken, organizationName: organizationName.trim() }) });
       const body = await response.json() as { accessToken?: string; user?: { email: string }; error?: { userMessage?: string } };
@@ -117,13 +100,22 @@ export function App() {
 
   async function switchWorkspace(id: string) {
     if (!client || id === workspaceId) return;
-    try { await client.switchWorkspace(id); setWorkspaceId(id); await refreshSession(); }
-    catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to switch workspace.'); }
+    try {
+      const session = await client.switchWorkspace(id);
+      localStorage.setItem('paymesh_auth_token', session.accessToken);
+      setAuthToken(session.accessToken); // recreates the client bound to the new workspace
+      setWorkspaceId(id);
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to switch workspace.'); }
   }
   async function switchProject(id: string, environment: 'TEST' | 'LIVE' = 'TEST') {
-    if (!client || id === projectId && environment === environmentMode) return;
-    try { await client.switchProject(id, environment); setProjectId(id); setEnvironmentMode(environment); await refreshSession(); }
-    catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to switch project.'); }
+    if (!client || (id === projectId && environment === environmentMode)) return;
+    try {
+      const session = await client.switchProject(id, environment);
+      localStorage.setItem('paymesh_auth_token', session.accessToken);
+      setAuthToken(session.accessToken); // recreates the client bound to the new project/environment
+      setProjectId(id);
+      setEnvironmentMode(environment);
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to switch project.'); }
   }
 
   if (!authToken) {
@@ -142,18 +134,8 @@ export function App() {
           ) : (
             <>
               <p className="eyebrow">WELCOME TO DEPOWAR</p>
-              <h1>Sign in to your project</h1>
+              <h1>Sign in with Google</h1>
               <p className="muted">Access your Depowar developer dashboard.</p>
-              <div className="auth-tabs">
-                <button className={authMode === 'login' ? 'selected' : ''} onClick={() => setAuthMode('login')}>Log in</button>
-                <button className={authMode === 'register' ? 'selected' : ''} onClick={() => setAuthMode('register')}>Register</button>
-              </div>
-              <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" /></label>
-              <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" /></label>
-              {authMode === 'register' && <label>Organization<input value={organizationName} onChange={(e) => setOrganizationName(e.target.value)} placeholder="Your organization" /></label>}
-              <button className="primary" onClick={authenticate} disabled={!email || !password}>{authMode === 'login' ? 'Log in' : 'Create account'}</button>
-              {message && <div className="auth-error">{message}</div>}
-              <div className="auth-divider">OR</div>
               <button className="google-button" onClick={() => { window.location.href = `${API_URL}/v1/auth/google`; }}>Continue with Google</button>
             </>
           )}
@@ -223,7 +205,7 @@ export function App() {
         {activeSection === 'recipients' && client && <Recipients client={client} />}
         {activeSection === 'access' && client && <Access client={client} />}
         {activeSection === 'analytics' && client && <Analytics client={client} />}
-        {activeSection === 'organization' && client && <Organization client={client} onSessionChange={refreshSession} />}
+        {activeSection === 'organization' && client && <Organization client={client} onSessionChange={refreshSession} onSwitchWorkspace={switchWorkspace} onSwitchProject={switchProject} />}
 
         <footer><span className="dashboard-message" role="status">Depowar dashboard · API: {API_URL}</span></footer>
       </main>

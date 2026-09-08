@@ -91,6 +91,9 @@ beforeAll(async () => {
 
   prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
   const client = await prisma.client.create({ data: { name: 'e2e-client' } });
+  // API keys require an owning project (PRD §API); mirror the real onboarding.
+  const organization = await prisma.organization.create({ data: { name: 'e2e-org' } });
+  await prisma.project.create({ data: { organizationId: organization.id, name: 'e2e-project', clientId: client.id } });
   await prisma.apiKey.create({
     data: { clientId: client.id, keyPrefix: API_KEY.slice(0, 12), keyHash: hashApiKey(API_KEY), scopes: ['deposits', 'quote', 'webhooks', 'recipients', 'management'] },
   });
@@ -333,6 +336,20 @@ describe('PayMesh API e2e', () => {
         .set('x-api-key', API_KEY)
         .expect(200);
       expect(removed.body.revoked).toBe(true);
+    });
+
+    it('rejects API key creation when the client has no project', async () => {
+      const orphan = await prisma!.client.create({ data: { name: 'orphan-client' } });
+      const orphanKey = `pm_test_${randomUUID().replace(/-/g, '')}`;
+      await prisma!.apiKey.create({
+        data: { clientId: orphan.id, keyPrefix: orphanKey.slice(0, 12), keyHash: hashApiKey(orphanKey), scopes: ['management'] },
+      });
+      const res = await http()
+        .post('/v1/api-keys')
+        .set('x-api-key', orphanKey)
+        .send({ scopes: ['deposits'] })
+        .expect(400);
+      expect(res.body.error.code).toBe('PROJECT_REQUIRED');
     });
 
     it('lists and creates recipients', async () => {

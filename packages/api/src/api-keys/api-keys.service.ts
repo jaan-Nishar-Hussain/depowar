@@ -3,6 +3,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { generateId, hashApiKey } from '@paymesh/db';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { PayMeshError } from '../common/errors';
 import type { CreateApiKeyDto } from './dto';
 
 const DEFAULT_SCOPES = ['deposits', 'quote', 'webhooks', 'recipients'];
@@ -16,6 +17,21 @@ export class ApiKeysService {
   }
 
   async create(clientId: string, dto: CreateApiKeyDto) {
+    // API keys are scoped to a project (PRD §API): the client must belong to
+    // a project's TEST or LIVE client before keys can be minted. This forces
+    // the intended onboarding flow (create project → generate API key).
+    const project = await this.prisma.project.findFirst({
+      where: { OR: [{ clientId }, { liveClientId: clientId }] },
+      select: { id: true },
+    });
+    if (!project) {
+      throw new PayMeshError(
+        'PROJECT_REQUIRED',
+        'Create a project before creating API keys',
+        'Create a project before creating API keys.',
+        400,
+      );
+    }
     const client = await this.prisma.client.findUniqueOrThrow({ where: { id: clientId }, select: { environment: true } });
     const prefix = client.environment === 'LIVE' ? 'dw_live_' : 'dw_test_';
     const key = `${prefix}${randomBytes(24).toString('hex')}`;
