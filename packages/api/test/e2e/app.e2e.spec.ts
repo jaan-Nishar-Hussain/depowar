@@ -382,7 +382,7 @@ describe('PayMesh API e2e', () => {
         .send({ scopes: ['deposits'] })
         .expect(400); // PROJECT_REQUIRED
 
-      // …so create the first project, which mints the first API key.
+      // …so create the first project. No key is minted automatically.
       const res = await http()
         .post('/v1/projects')
         .set('authorization', `Bearer ${bearer}`)
@@ -394,7 +394,16 @@ describe('PayMesh API e2e', () => {
         })
         .expect(201);
       expect(res.body.project.name).toBe('Fresh Project');
-      expect(res.body.apiKey.key).toBeTruthy();
+      expect(res.body.apiKey).toBeUndefined(); // key is NOT minted with the project
+
+      // The key appears only when the user clicks "Create API" for that project.
+      const projectBearer = makeJwt(user.id, org.id, user.email, res.body.project.id);
+      const keyRes = await http()
+        .post('/v1/api-keys')
+        .set('authorization', `Bearer ${projectBearer}`)
+        .send({ scopes: ['deposits'] })
+        .expect(201);
+      expect(keyRes.body.key).toBeTruthy();
     });
 
     it('rejects API key creation when the session has no project', async () => {

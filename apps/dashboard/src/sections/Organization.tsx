@@ -49,7 +49,7 @@ export function Organization({ client, onSwitchOrganization, onSwitchProject, on
     try {
       const created = await client.createProject(newProjectName.trim(), wallet.trim() as `0x${string}`, chainId, token as 'USDC' | 'USDT', 'TEST');
       setNewProjectName(''); setWallet('');
-      setMsg(`Project "${created.project.name}" created — check the Access tab for its API key.`);
+      setMsg(`Project "${created.project.name}" created. Open the Access tab and click "Create API" to mint its API key.`);
       await onSwitchProject(created.project.id, 'TEST');
       await onSessionChange();
     } catch (e) { setMsg(e instanceof Error ? e.message : 'Unable to create project.'); }

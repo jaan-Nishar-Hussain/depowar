@@ -28,10 +28,11 @@ export function Access({ client }: { client: PayMeshClient }) {
     try {
       const result = await client.createApiKey(['deposits', 'quote', 'webhooks']);
       setNewKey(result.key);
-      setMsg('Key created — copy it now, it will not be shown again.');
+      setMsg('API key created — copy it now, it will not be shown again.');
       await keys.refresh();
-    } catch (e) { setMsg(e instanceof Error ? e.message : 'Unable to create key.'); }
+    } catch (e) { setMsg(e instanceof Error ? e.message : 'Unable to create API key.'); }
   }
+
   async function revokeKey(id: string) {
     try { await client.revokeApiKey(id); setMsg('Key revoked.'); await keys.refresh(); }
     catch (e) { setMsg(e instanceof Error ? e.message : 'Unable to revoke key.'); }
@@ -53,9 +54,8 @@ export function Access({ client }: { client: PayMeshClient }) {
       {msg && <div className="notice">{msg}</div>}
 
       <div className="grid">
-        <Card title="API keys" eyebrow="ACCESS" actions={hasActiveKey ? undefined : <button onClick={createKey} disabled={!client}>Create key</button>}>
-          <p className="muted">Keys authenticate SDK requests and belong to this project. One active key per project — revoke it before creating a new one.</p>
-          {hasActiveKey && <div className="notice">A key is active for this project. <strong>Revoke it first</strong> to create a new one.</div>}
+        <Card title="API keys" eyebrow="ACCESS" actions={hasActiveKey ? undefined : <button onClick={createKey} disabled={!client}>Create API</button>}>
+          <p className="muted">No key is minted until you click "Create API". One active key per project — revoke it to create a new one.</p>
           {newKey && (
             <div className="secret secret-create">
               <div><strong>Save this API key now</strong><span>It will only be displayed once.</span></div>
@@ -63,7 +63,10 @@ export function Access({ client }: { client: PayMeshClient }) {
               <CopyButton text={newKey} label="Copy key" />
             </div>
           )}
-          {keys.loading ? <Spinner /> : (keys.data ?? []).length === 0 ? <EmptyState message="No API keys yet." /> : (
+          {hasActiveKey && <div className="notice">A key is active for this project. <strong>Revoke it first</strong> to create a new one.</div>}
+          {keys.loading ? <Spinner /> : (keys.data ?? []).length === 0 && !hasActiveKey ? (
+            <EmptyState message="No API key yet. Click “Create API” to mint this project's key." />
+          ) : (
             <div className="records">
               {(keys.data ?? []).map((k) => (
                 <div className="record" key={k.id}>

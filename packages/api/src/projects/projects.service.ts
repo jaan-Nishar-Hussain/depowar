@@ -2,12 +2,11 @@ import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PayMeshError } from '../common/errors';
 import { AuthService } from '../auth/auth.service';
-import { ApiKeysService } from '../api-keys/api-keys.service';
 import { RecipientsService } from '../recipients/recipients.service';
 
 @Injectable()
 export class ProjectsService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService, @Inject(AuthService) private readonly auth: AuthService, @Inject(ApiKeysService) private readonly apiKeys: ApiKeysService, @Inject(RecipientsService) private readonly recipients: RecipientsService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService, @Inject(AuthService) private readonly auth: AuthService, @Inject(RecipientsService) private readonly recipients: RecipientsService) {}
 
   async list(userId: string, projectId: string) {
     if (!projectId) {
@@ -49,10 +48,11 @@ export class ProjectsService {
     if (!organizationId) throw new PayMeshError('FORBIDDEN', 'Organization access denied', 'You do not own this organization.', 403);
     const project = await this.prisma.project.create({ data: { organizationId, name: name.trim(), environment }, select: { id: true, name: true, environment: true, organizationId: true } });
     await this.recipients.create(project.id, { walletAddress: receiverAddress, chainId: destinationChainId, token: destinationToken, settlementType: 'EOA' });
-    const apiKey = await this.apiKeys.create(project.id, { scopes: ['deposits', 'quote', 'webhooks', 'recipients'] });
-    const response = { project, apiKey };
+    // The API key is NOT minted here — it is created explicitly from the Access
+    // tab ("Create API") so no key exists before the user asks for one.
+    const response = { project };
     if (idempotencyKey) {
-      const safeResponse = { project, apiKey: { id: apiKey.id, scopes: apiKey.scopes, warning: apiKey.warning } };
+      const safeResponse = { project };
       await this.prisma.idempotencyRecord.create({ data: { key: idempotencyKey, operation: 'project.create', organizationId: project.organizationId, projectId: project.id, response: safeResponse, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) } }).catch(() => undefined);
     }
     return response;
