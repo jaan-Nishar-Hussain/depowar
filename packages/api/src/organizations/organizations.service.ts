@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PayMeshError } from '../common/errors';
 
 @Injectable()
-export class WorkspacesService {
+export class OrganizationsService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   list(userId: string) {
@@ -21,7 +21,7 @@ export class WorkspacesService {
   async switch(userId: string, organizationId: string) {
     const organization = await this.prisma.organization.findFirst({ where: { id: organizationId, memberships: { some: { userId, status: 'ACTIVE' } } }, include: { projects: { select: { id: true }, orderBy: { createdAt: 'asc' }, take: 1 } } });
     const projectId = organization?.projects[0]?.id;
-    if (!organization) throw new PayMeshError('FORBIDDEN', 'Workspace access denied', 'You do not belong to this workspace.', 403);
+    if (!organization) throw new PayMeshError('FORBIDDEN', 'Organization access denied', 'You do not belong to this organization.', 403);
     return { organizationId, projectId: projectId ?? null };
   }
 }

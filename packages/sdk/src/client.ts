@@ -221,9 +221,9 @@ export class PayMeshClient {
     return this.request('/health/providers');
   }
 
-  listWorkspaces(): Promise<Array<{ id: string; name: string; projects: Array<{ id: string; name: string; environment?: string }> }>> { return this.request('/workspaces'); }
-  createWorkspace(name: string): Promise<{ id: string; name: string }> { return this.request('/workspaces', { method: 'POST', body: JSON.stringify({ name }) }); }
-  switchWorkspace(organizationId: string): Promise<{ accessToken: string; user: { id: string; email: string }; orgId: string; projectId: string | null }> { return this.request('/workspaces/switch', { method: 'POST', body: JSON.stringify({ organizationId }) }); }
+  listOrganizations(): Promise<Array<{ id: string; name: string; projects: Array<{ id: string; name: string; environment?: string }> }>> { return this.request('/organizations'); }
+  createOrganization(name: string): Promise<{ id: string; name: string }> { return this.request('/organizations', { method: 'POST', body: JSON.stringify({ name }) }); }
+  switchOrganization(organizationId: string): Promise<{ accessToken: string; user: { id: string; email: string }; orgId: string; projectId: string | null }> { return this.request('/organizations/switch', { method: 'POST', body: JSON.stringify({ organizationId }) }); }
   listProjects(): Promise<Array<{ id: string; name: string; environment: string }>> { return this.request('/projects'); }
   createProject(name: string, receiverAddress: Address, destinationChainId: number, destinationToken: 'USDC' | 'USDT', environment: 'TEST' | 'LIVE' = 'TEST', idempotencyKey?: string): Promise<{ project: { id: string; name: string; environment: string }; apiKey: { id: string; key: string; scopes: string[]; warning: string } }> { return this.request('/projects', { method: 'POST', headers: idempotencyKey ? { 'idempotency-key': idempotencyKey } : undefined, body: JSON.stringify({ name, receiverAddress, destinationChainId, destinationToken, environment }) }); }
   switchProject(projectId: string, environment: 'TEST' | 'LIVE' = 'TEST'): Promise<{ accessToken: string; user: { id: string; email: string }; orgId: string; projectId: string | null }> { return this.request('/projects/switch', { method: 'POST', body: JSON.stringify({ projectId, environment }) }); }

@@ -20,7 +20,7 @@ import { RecipientsModule } from './recipients/recipients.module';
 import { ProjectsModule as ProjectManagementModule } from './projects/projects.module';
 import { ApiKeysModule } from './api-keys/api-keys.module';
 import { AnalyticsModule } from './analytics/analytics.module';
-import { WorkspacesModule } from './workspaces/workspaces.module';
+import { OrganizationsModule } from './organizations/organizations.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { HealthController } from './health.controller';
 import { GlobalExceptionFilter } from './common/exception.filter';
@@ -50,7 +50,7 @@ import { ENV } from './common/tokens';
     ProjectManagementModule,
     ApiKeysModule,
     AnalyticsModule,
-    WorkspacesModule,
+    OrganizationsModule,
     MetricsModule,
   ],
   controllers: [HealthController],

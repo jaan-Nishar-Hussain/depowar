@@ -19,6 +19,14 @@ function symbolFor(address: string | null | undefined): string {
   return hit?.symbol ?? 'USDC';
 }
 
+/** Friendly message for API failures so the demo isn't cryptic. */
+function messageFor(error: unknown): string {
+  if (error && typeof error === 'object' && 'status' in error && (error as { status?: number }).status === 401) {
+    return 'Your API key is missing or invalid. Set VITE_API_KEY in apps/consumer-demo/.env to a project key from the dashboard (Organization → Create project).';
+  }
+  return error instanceof Error ? error.message : 'Something went wrong.';
+}
+
 type Recipient = {
   id: string;
   walletAddress: string;
@@ -95,7 +103,7 @@ export function App() {
         });
         setStatus(`Loaded project receiver: ${recipient.walletAddress.slice(0, 8)}…${recipient.walletAddress.slice(-6)} · chain ${chainId} · ${symbolFor(token)}`);
       } catch (error) {
-        setStatus(error instanceof Error ? error.message : 'Failed to load project config.');
+        setStatus(messageFor(error));
       }
     })();
   }, [apiKey, recipientId, destinationChain, destinationToken, destinationTokenSymbol, baseUsdc, sdk]);
@@ -114,7 +122,7 @@ export function App() {
             const chains = await sdk.listChains();
             setStatus(`SDK connected — ${chains.length} chains returned`);
           } catch (error) {
-            setStatus(error instanceof Error ? error.message : 'SDK request failed');
+            setStatus(messageFor(error));
           }
         }}>Check SDK/API</button>
       </section>

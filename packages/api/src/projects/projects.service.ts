@@ -39,14 +39,14 @@ export class ProjectsService {
       const previous = await this.prisma.idempotencyRecord.findUnique({ where: { key_operation: { key: idempotencyKey, operation: 'project.create' } } });
       if (previous && previous.expiresAt > new Date()) throw new PayMeshError('DATABASE_CONFLICT', 'This project creation request was already processed.', 'This request was already processed. The API key was shown only on the first response.', 409);
     }
-    // Resolve the owning workspace: prefer the current project's org; a fresh
+    // Resolve the owning organization: prefer the current project's org; a fresh
     // account with no project yet falls back to its first active membership.
     const current = currentProjectId
       ? await this.prisma.project.findFirst({ where: { id: currentProjectId, organization: { memberships: { some: { userId, status: 'ACTIVE' } } } }, select: { organizationId: true } })
       : null;
     const fallback = current ? null : await this.prisma.organization.findFirst({ where: { memberships: { some: { userId, status: 'ACTIVE' } } }, orderBy: { createdAt: 'asc' }, select: { id: true } });
     const organizationId = current?.organizationId ?? fallback?.id;
-    if (!organizationId) throw new PayMeshError('FORBIDDEN', 'Workspace access denied', 'You do not own this workspace.', 403);
+    if (!organizationId) throw new PayMeshError('FORBIDDEN', 'Organization access denied', 'You do not own this organization.', 403);
     const project = await this.prisma.project.create({ data: { organizationId, name: name.trim(), environment }, select: { id: true, name: true, environment: true, organizationId: true } });
     await this.recipients.create(project.id, { walletAddress: receiverAddress, chainId: destinationChainId, token: destinationToken, settlementType: 'EOA' });
     const apiKey = await this.apiKeys.create(project.id, { scopes: ['deposits', 'quote', 'webhooks', 'recipients'] });

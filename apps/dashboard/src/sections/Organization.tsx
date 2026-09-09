@@ -4,11 +4,11 @@ import { Card, StatusTag, EmptyState, Spinner, Field } from '../components/ui';
 import { useApi } from '../lib/useApi';
 
 type Project = { id: string; name: string; environment: string };
-type Workspace = { id: string; name: string; projects: Project[] };
+type Organization = { id: string; name: string; projects: Project[] };
 
-export function Organization({ client, onSwitchWorkspace, onSwitchProject, onSessionChange }: {
+export function Organization({ client, onSwitchOrganization, onSwitchProject, onSessionChange }: {
   client: PayMeshClient;
-  onSwitchWorkspace: (id: string) => Promise<void>;
+  onSwitchOrganization: (id: string) => Promise<void>;
   onSwitchProject: (projectId: string, environment: 'TEST' | 'LIVE') => Promise<void>;
   onSessionChange: () => Promise<void>;
 }) {
@@ -24,21 +24,21 @@ export function Organization({ client, onSwitchWorkspace, onSwitchProject, onSes
     setOrgName(p.name);
     return p;
   });
-  const workspaces = useApi(client, (c) => c.listWorkspaces() as Promise<Workspace[]>);
+  const orgs = useApi(client, (c) => c.listOrganizations() as Promise<Organization[]>);
 
   async function renameOrg() {
     if (!orgName.trim()) return;
     try { await client.updateProject(orgName.trim()); setMsg('Organization name updated.'); await project.refresh(); }
     catch (e) { setMsg(e instanceof Error ? e.message : 'Unable to update.'); }
   }
-  async function createWorkspace() {
-    const name = window.prompt('Workspace name');
+  async function createOrganization() {
+    const name = window.prompt('Organization name');
     if (!name?.trim()) return;
-    try { const created = await client.createWorkspace(name.trim()); setMsg(`Workspace "${created.name}" created.`); await workspaces.refresh(); }
-    catch (e) { setMsg(e instanceof Error ? e.message : 'Unable to create workspace.'); }
+    try { const created = await client.createOrganization(name.trim()); setMsg(`Organization "${created.name}" created.`); await orgs.refresh(); }
+    catch (e) { setMsg(e instanceof Error ? e.message : 'Unable to create organization.'); }
   }
-  async function switchWorkspace(id: string) {
-    try { await onSwitchWorkspace(id); setMsg('Switched workspace.'); }
+  async function switchOrganization(id: string) {
+    try { await onSwitchOrganization(id); setMsg('Switched organization.'); }
     catch (e) { setMsg(e instanceof Error ? e.message : 'Unable to switch.'); }
   }
   async function createProject() {
@@ -58,7 +58,8 @@ export function Organization({ client, onSwitchWorkspace, onSwitchProject, onSes
   return (
     <div className="organization-page">
       <div className="grid">
-        <Card title="Organization" eyebrow="WORKSPACE">
+        <Card title="Your organization" eyebrow="ORGANIZATION">
+          <p className="muted">Your organization contains all your projects.</p>
           {project.loading ? <Spinner /> : (
             <>
               <Field label="Organization name">
@@ -70,15 +71,15 @@ export function Organization({ client, onSwitchWorkspace, onSwitchProject, onSes
           {msg && <div className="notice">{msg}</div>}
         </Card>
 
-        <Card title="Workspaces" eyebrow="MULTI-PROJECT"
-          actions={<button onClick={createWorkspace} disabled={!client}>+ New workspace</button>}>
-          {workspaces.loading ? <Spinner /> : (workspaces.data ?? []).length === 0 ? <EmptyState message="No workspaces yet." /> : (
+        <Card title="Organizations" eyebrow="MULTI-ORGANIZATION"
+          actions={<button onClick={createOrganization} disabled={!client}>+ New organization</button>}>
+          {orgs.loading ? <Spinner /> : (orgs.data ?? []).length === 0 ? <EmptyState message="No organizations yet." /> : (
             <div className="records">
-              {(workspaces.data ?? []).map((w) => (
+              {(orgs.data ?? []).map((w) => (
                 <div className="record" key={w.id}>
                   <span><strong>{w.name}</strong></span>
                   <span>{w.projects.length} projects</span>
-                  <button className="link-btn" onClick={() => switchWorkspace(w.id)}>Switch</button>
+                  <button className="link-btn" onClick={() => switchOrganization(w.id)}>Switch</button>
                 </div>
               ))}
             </div>

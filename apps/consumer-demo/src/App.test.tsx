@@ -44,6 +44,7 @@ describe('clean consumer demo', () => {
   });
 
   it('shows a hint when no API key is set', () => {
+    vi.stubEnv('VITE_API_KEY', '');
     render(
       <WagmiProvider config={wagmiConfig}>
         <QueryClientProvider client={new QueryClient()}>

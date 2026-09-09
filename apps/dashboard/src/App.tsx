@@ -13,7 +13,7 @@ const SECTIONS = ['overview', 'deposits', 'recipients', 'access', 'analytics', '
 type Section = typeof SECTIONS[number];
 
 type Project = { id: string; name: string; environment?: string };
-type Workspace = { id: string; name: string; projects: Array<{ id: string; name: string; environment?: string }> };
+type Organization = { id: string; name: string; projects: Array<{ id: string; name: string; environment?: string }> };
 
 function authFromHash() {
   const params = new URLSearchParams(window.location.hash.slice(1));
@@ -27,28 +27,28 @@ export function App() {
   const [authEmail, setAuthEmail] = useState(() => localStorage.getItem('paymesh_auth_email') ?? (authFromHash().email || 'Signed-in user'));
   const [organizationName, setOrganizationName] = useState('');
   const [client, setClient] = useState<PayMeshClient | null>(null);
-  const [workspaceId, setWorkspaceId] = useState('');
+  const [organizationId, setOrganizationId] = useState('');
   const [projectId, setProjectId] = useState('');
   const [environmentMode, setEnvironmentMode] = useState<'TEST' | 'LIVE'>('TEST');
   const [message, setMessage] = useState('');
 
-  // Sidebar data (project + workspace/project lists for the switchers).
+  // Sidebar data (organization + project lists for the switchers).
   const projectData = useApi(client, (c) => c.getProject() as Promise<Project>);
-  const workspacesData = useApi(client, (c) => c.listWorkspaces() as Promise<Workspace[]>);
+  const organizationsData = useApi(client, (c) => c.listOrganizations() as Promise<Organization[]>);
   const projectsData = useApi(client, (c) => c.listProjects() as Promise<Project[]>);
 
   const project = projectData.data;
-  const workspaces = workspacesData.data ?? [];
+  const organizations = organizationsData.data ?? [];
   const projects = projectsData.data ?? [];
 
   useEffect(() => {
     if (!project) return;
     setEnvironmentMode(project.environment === 'LIVE' ? 'LIVE' : 'TEST');
-    const currentWorkspace = workspaces.find((w) => w.projects.some((p) => p.id === project.id));
-    if (currentWorkspace && !workspaceId) setWorkspaceId(currentWorkspace.id);
+    const currentOrganization = organizations.find((o) => o.projects.some((p) => p.id === project.id));
+    if (currentOrganization && !organizationId) setOrganizationId(currentOrganization.id);
     const currentProject = projects.find((p) => p.id === project.id);
     if (currentProject && !projectId) setProjectId(currentProject.id);
-  }, [project, workspaces, projects, workspaceId, projectId]);
+  }, [project, organizations, projects, organizationId, projectId]);
 
   useEffect(() => {
     const incoming = authFromHash();
@@ -94,18 +94,18 @@ export function App() {
 
   const refreshSession = useCallback(async () => {
     await projectData.refresh();
-    await workspacesData.refresh();
+    await organizationsData.refresh();
     await projectsData.refresh();
-  }, [projectData, workspacesData, projectsData]);
+  }, [projectData, organizationsData, projectsData]);
 
-  async function switchWorkspace(id: string) {
-    if (!client || id === workspaceId) return;
+  async function switchOrganization(id: string) {
+    if (!client || id === organizationId) return;
     try {
-      const session = await client.switchWorkspace(id);
+      const session = await client.switchOrganization(id);
       localStorage.setItem('paymesh_auth_token', session.accessToken);
-      setAuthToken(session.accessToken); // recreates the client bound to the new workspace
-      setWorkspaceId(id);
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to switch workspace.'); }
+      setAuthToken(session.accessToken); // recreates the client bound to the new organization
+      setOrganizationId(id);
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to switch organization.'); }
   }
   async function switchProject(id: string, environment: 'TEST' | 'LIVE' = 'TEST') {
     if (!client || (id === projectId && environment === environmentMode)) return;
@@ -127,7 +127,7 @@ export function App() {
             <>
               <p className="eyebrow">ONE LAST STEP</p>
               <h1>Name your organization</h1>
-              <p className="muted">You signed in with Google. Choose the organization name you’ll use in Depowar.</p>
+              <p className="muted">You signed in with Google. Choose a name for your organization you’ll use in Depowar.</p>
               <label>Organization name<input value={organizationName} onChange={(e) => setOrganizationName(e.target.value)} placeholder="Your organization" /></label>
               <button className="primary" onClick={completeGoogleOnboarding} disabled={!organizationName.trim()}>Continue to dashboard</button>
             </>
@@ -162,10 +162,10 @@ export function App() {
             </a>
           ))}
         </nav>
-        <div className="workspace-switcher">
-          <span>WORKSPACE</span>
-          <select aria-label="Workspace" value={workspaceId} onChange={(e) => switchWorkspace(e.target.value)}>
-            {workspaces.map((w) => <option value={w.id} key={w.id}>{w.name}</option>)}
+        <div className="organization-switcher">
+          <span>ORGANIZATION</span>
+          <select aria-label="Organization" value={organizationId} onChange={(e) => switchOrganization(e.target.value)}>
+            {(organizations ?? []).map((w) => <option value={w.id} key={w.id}>{w.name}</option>)}
           </select>
           <span className="project-label">PROJECT</span>
           <select aria-label="Project" value={projectId} onChange={(e) => switchProject(e.target.value, environmentMode)}>
@@ -210,7 +210,7 @@ export function App() {
         {activeSection === 'recipients' && client && <Recipients client={client} />}
         {activeSection === 'access' && client && <Access client={client} />}
         {activeSection === 'analytics' && client && <Analytics client={client} />}
-        {activeSection === 'organization' && client && <Organization client={client} onSessionChange={refreshSession} onSwitchWorkspace={switchWorkspace} onSwitchProject={switchProject} />}
+        {activeSection === 'organization' && client && <Organization client={client} onSessionChange={refreshSession} onSwitchOrganization={switchOrganization} onSwitchProject={switchProject} />}
 
         <footer><span className="dashboard-message" role="status">Depowar dashboard · API: {API_URL}</span></footer>
       </main>
