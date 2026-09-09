@@ -10,7 +10,7 @@ export class RecipientsController {
   constructor(@Inject(RecipientsService) private readonly service: RecipientsService) {}
 
   @Get()
-  @Scopes('management')
+  @Scopes('management', 'recipients')
   async list(@Project() project: ProjectContext) {
     return stringifyBigInts(await this.service.list(project.id));
   }
