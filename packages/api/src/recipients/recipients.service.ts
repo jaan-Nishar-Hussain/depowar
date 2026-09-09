@@ -26,6 +26,15 @@ export class RecipientsService {
     });
   }
 
+  /** Returns the project's default receiver for consumer deposit flows. */
+  async getDepositConfig(projectId: string): Promise<unknown> {
+    return this.prisma.recipient.findFirst({
+      where: { projectId },
+      include: { settlementConfigs: { where: { enabled: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async create(projectId: string, dto: CreateRecipientDto): Promise<unknown> {
     const screening = await this.screening.screen({ walletAddress: dto.walletAddress });
     if (!screening.allowed) {

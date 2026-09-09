@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 describe('clean consumer demo', () => {
-  it('bootstraps from the project API key + receiver and renders the widget', async () => {
+  it('renders the widget using only the project API key', async () => {
     vi.stubEnv('VITE_API_KEY', 'dw_test_demo');
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -35,9 +35,9 @@ describe('clean consumer demo', () => {
       </WagmiProvider>,
     );
     expect(screen.getByRole('heading', { name: 'Depowar SDK Demo' })).toBeInTheDocument();
-    // Auto-bootstrap loads the project's receiver from the API.
+    // The widget loads the project's receiver internally from the API key.
     await waitFor(() => expect(screen.getByTestId('paymesh-deposit')).toBeInTheDocument());
-    expect(screen.getByRole('status')).toHaveTextContent(/Loaded project receiver/);
+    expect(screen.getByRole('status')).toHaveTextContent(/widget will load the project receiver/);
 
     fireEvent.click(screen.getByRole('button', { name: 'Check SDK/API' }));
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('SDK connected — 1 chains returned'));

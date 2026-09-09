@@ -1,15 +1,15 @@
-import type { QuoteResult } from '@paymesh/sdk';
+import type { QuoteResult, Recipient } from '@paymesh/sdk';
 
 export interface PayMeshDepositConfig {
   /** Backend base URL, e.g. https://api.paymesh.dev. */
-  apiUrl: string;
+  apiUrl?: string;
   /** Integrator API key. */
   apiKey: string;
-  /** Recipient the deposit settles to. */
-  recipientId: string;
-  /** Destination chain id and token the recipient receives. */
-  toChain: number;
-  toToken: string;
+  /** Optional internal override; normally resolved from the project API key. */
+  recipientId?: string;
+  /** Optional destination overrides; normally resolved from the project receiver. */
+  toChain?: number;
+  toToken?: string;
   /** Destination token symbol shown on the completion screen. */
   toTokenSymbol?: string;
   /** Destination token decimals; USDC defaults to 6 when omitted. */
@@ -45,6 +45,8 @@ export interface PayMeshDepositApi {
     toChain: number;
     toToken: string;
   }): Promise<{ depositId: string }>;
+  listRecipients(): Promise<Recipient[]>;
+  getDepositConfig(): Promise<Recipient | null>;
   getQuote(query: {
     depositId: string;
     fromChain: number;

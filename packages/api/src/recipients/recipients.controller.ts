@@ -15,6 +15,12 @@ export class RecipientsController {
     return stringifyBigInts(await this.service.list(project.id));
   }
 
+  @Get('config')
+  @Scopes('deposits')
+  async depositConfig(@Project() project: ProjectContext) {
+    return stringifyBigInts(await this.service.getDepositConfig(project.id));
+  }
+
   @Post()
   @Scopes('management')
   async create(@Project() project: ProjectContext, @Body(new ZodPipe(CreateRecipientSchema)) dto: CreateRecipientDto) {

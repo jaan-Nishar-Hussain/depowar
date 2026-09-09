@@ -19,7 +19,8 @@ import {
 } from './types';
 
 export interface PayMeshClientConfig {
-  baseUrl: string;
+  /** API origin. Defaults to the local Depowar API for the bundled demo. */
+  baseUrl?: string;
   apiKey?: string;
   authToken?: string;
 }
@@ -35,7 +36,7 @@ export class PayMeshClient {
   private readonly authToken?: string;
 
   constructor(config: PayMeshClientConfig) {
-    this.baseUrl = config.baseUrl.replace(/\/+$/, '');
+    this.baseUrl = (config.baseUrl ?? 'http://localhost:4000').replace(/\/+$/, '');
     this.apiKey = config.apiKey;
     this.authToken = config.authToken;
   }
@@ -204,6 +205,9 @@ export class PayMeshClient {
   }
 
   listRecipients(): Promise<Recipient[]> { return this.request('/recipients'); }
+
+  /** Loads the project's default receiver for consumer deposit flows. */
+  getDepositConfig(): Promise<Recipient | null> { return this.request('/recipients/config'); }
 
   createRecipient(input: { walletAddress: Address; chainId: number; token: string }): Promise<Recipient> {
     return this.request('/recipients', { method: 'POST', body: JSON.stringify(input) });

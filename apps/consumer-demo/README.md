@@ -16,17 +16,22 @@ pnpm install
 pnpm --filter @paymesh/consumer-demo dev
 ```
 
+For a real deposit, run the API and worker in separate terminals. The worker monitors the first signed transaction and unlocks the next signing step:
+
+```bash
+pnpm dev:api
+pnpm dev:worker
+```
+
 Create `apps/consumer-demo/.env` with:
 
 ```ini
-VITE_API_URL=http://localhost:4000
 VITE_API_KEY=your-integrator-api-key
-VITE_RECIPIENT_ID=your-recipient-id
-VITE_TO_CHAIN=137
-VITE_TO_TOKEN=0xc2132D05D31c914a87C6611C10748AEb04B58e8F
-VITE_BASE_USDC=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
-VITE_BASE_RPC=https://mainnet.base.org
 ```
+
+The SDK targets the local API at `http://localhost:4000` by default. For a separately deployed API, configure the SDK's `baseUrl` in application code. The consumer does not provide a recipient ID: the SDK loads the project's configured receiver using the API key.
+
+For production or repeated local testing, set `VITE_BASE_RPC` to a provider RPC (for example an Alchemy Base mainnet endpoint). The public Base RPC can return `429 Too Many Requests`.
 
 The **Check SDK/API** button calls `listChains()` directly. The widget then exercises the second SDK surface: wallet connection, quote, swipe confirmation, transaction signing, submission reporting, polling, and settlement UI.
 

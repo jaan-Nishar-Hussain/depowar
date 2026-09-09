@@ -74,7 +74,9 @@ async function waitForStatus(
     if (status.status === 'FAILED' || status.status === 'SETTLED') {
       throw new Error('The deposit finished before all steps were signed.');
     }
-    if (Date.now() - start > timeoutMs) throw new Error('Timed out waiting for the previous step.');
+    if (Date.now() - start > timeoutMs) {
+      throw new Error('Timed out waiting for the previous transaction to confirm. Make sure the Depowar worker is running.');
+    }
     await new Promise((r) => setTimeout(r, 1_000));
   }
 }
@@ -95,6 +97,51 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
     [config.apiUrl, config.apiKey],
   );
 
+  const [destination, setDestination] = useState({
+    recipientId: config.recipientId ?? '',
+    toChain: config.toChain,
+    toToken: config.toToken,
+    toTokenSymbol: config.toTokenSymbol ?? 'USDC',
+    toTokenDecimals: config.toTokenDecimals ?? 6,
+  });
+
+  useEffect(() => {
+    const hasDestination = Boolean(config.recipientId && config.toChain && config.toToken);
+    if (hasDestination) {
+      setDestination({
+        recipientId: config.recipientId!,
+        toChain: config.toChain,
+        toToken: config.toToken,
+        toTokenSymbol: config.toTokenSymbol ?? 'USDC',
+        toTokenDecimals: config.toTokenDecimals ?? 6,
+      });
+      return;
+    }
+    if (!config.apiKey) return;
+
+    let cancelled = false;
+    void sdk.getDepositConfig().then((recipient) => {
+      if (cancelled) return;
+      const settlement = recipient?.settlementConfigs?.[0];
+      const toChain = recipient?.preferredChainId ?? settlement?.chainId;
+      const toToken = recipient?.preferredToken ?? settlement?.token;
+      if (!recipient || !toChain || !toToken) {
+        setError('No receiver is configured for this project. Add a receiver in the Depowar dashboard.');
+        return;
+      }
+      setDestination({
+        recipientId: recipient.id,
+        toChain,
+        toToken,
+        toTokenSymbol: config.toTokenSymbol ?? tokenLabel(toToken),
+        toTokenDecimals: config.toTokenDecimals ?? 6,
+      });
+    }).catch(() => {
+      if (!cancelled) setError('Could not load the project receiver. Check the API key and API connection.');
+    });
+    return () => { cancelled = true; };
+  }, [config.recipientId, config.toChain, config.toToken, config.toTokenSymbol, config.toTokenDecimals, sdk]);
+
   const [amount, setAmount] = useState('');
   const [depositId, setDepositId] = useState<string | null>(null);
   const [quote, setQuote] = useState<QuoteResult | null>(null);
@@ -105,13 +152,14 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
   const [processingProgress, setProcessingProgress] = useState(8);
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
+  const depositRequestInFlight = useRef(false);
   const swipeRef = useRef<HTMLButtonElement>(null);
 
   const connected = isConnected && !!address;
   const isSigning = status === 'signing';
   const supportedChains = config.supportedSourceChains ?? SUPPORTED_MAINNET_CHAINS;
   const activeChainId = chain?.id ?? supportedChains[0] ?? 8453;
-  const toTokenSymbol = config.toTokenSymbol ?? 'USDC';
+  const toTokenSymbol = destination.toTokenSymbol;
   const [chainSearch, setChainSearch] = useState('');
   const [tokenSearch, setTokenSearch] = useState('');
   const baseSourceToken = config.fromTokenByChain?.[activeChainId] ?? config.fromToken ?? 'native';
@@ -165,7 +213,13 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
   );
 
   const startDeposit = useCallback(async () => {
-    if (!connected) return;
+    if (!connected || depositRequestInFlight.current) return;
+    if (!destination.recipientId || !destination.toChain || !destination.toToken) {
+      setStatus('failed');
+      setError('Project receiver is not available yet. Start the Depowar API and make sure this API key belongs to the same API deployment.');
+      return;
+    }
+    depositRequestInFlight.current = true;
     setStatus('quoting');
     setError(null);
     try {
@@ -173,13 +227,13 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
         throw new Error('Connect to a supported network to send this deposit.');
       }
       const srcDecimals = await resolveTokenDecimals(sourceToken);
-      setDestDecimals(config.toTokenDecimals ?? 6);
+      setDestDecimals(destination.toTokenDecimals);
       const fromAmount = toBaseUnits(amount, srcDecimals);
 
       const deposit = await sdk.createDepositIntent({
-        recipientId: config.recipientId,
-        toChain: config.toChain,
-        toToken: config.toToken,
+        recipientId: destination.recipientId,
+        toChain: destination.toChain,
+        toToken: destination.toToken,
       });
       setDepositId(deposit.depositId);
       const result = await sdk.getQuote({
@@ -195,8 +249,10 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
     } catch (e) {
       setStatus('failed');
       setError(messageOf(e));
+    } finally {
+      depositRequestInFlight.current = false;
     }
-  }, [connected, sdk, config, activeChainId, address, amount, resolveTokenDecimals, supportedChains, sourceToken]);
+  }, [connected, sdk, config, destination, activeChainId, address, amount, resolveTokenDecimals, supportedChains, sourceToken]);
 
   const resetQuote = useCallback((nextAmount: string) => {
     setAmount(nextAmount);
@@ -289,6 +345,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
   }, [amount, finishSwipe, isSigning, quote, status, swipeOffset]);
 
   const resetDeposit = useCallback(() => {
+    depositRequestInFlight.current = false;
     setAmount('');
     setQuote(null);
     setDepositId(null);

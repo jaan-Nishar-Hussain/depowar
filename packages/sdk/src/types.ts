@@ -143,7 +143,7 @@ export interface Recipient {
   preferredChainId?: number;
   preferredToken?: string;
   kycStatus?: string;
-  settlementConfigs?: unknown[];
+  settlementConfigs?: Array<{ chainId: number; token: string }>;
   createdAt: string;
 }
 
