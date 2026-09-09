@@ -19,14 +19,6 @@ function symbolFor(address: string | null | undefined): string {
   return hit?.symbol ?? 'USDC';
 }
 
-/** Friendly message for API failures so the demo isn't cryptic. */
-function messageFor(error: unknown): string {
-  if (error && typeof error === 'object' && 'status' in error && (error as { status?: number }).status === 401) {
-    return 'Your API key is missing or invalid. Set VITE_API_KEY in apps/consumer-demo/.env to a project key from the dashboard (Organization → Create project).';
-  }
-  return error instanceof Error ? error.message : 'Something went wrong.';
-}
-
 type Recipient = {
   id: string;
   walletAddress: string;
@@ -45,68 +37,75 @@ type WidgetConfig = {
   supportedTokensByChain?: Record<number, Array<{ symbol: string; address: string; decimals?: number }>>;
 };
 
+const FALLBACK: WidgetConfig = {
+  recipientId: '',
+  toChain: 137,
+  toToken: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', // Polygon USDC
+  toTokenSymbol: 'USDC',
+  toTokenDecimals: 6,
+  fromTokenByChain: { 8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' },
+  supportedTokensByChain: { 8453: [{ symbol: 'USDC', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', decimals: 6 }] },
+};
+
 /**
- * The demo bootstraps from the project's API key: it loads the project's
- * receiver config (chain + wallet + token) straight from the API, so whatever
- * a user configured in the dashboard project is exactly what the demo uses.
- * Falls back to explicit VITE_* overrides when set.
+ * The demo UI is always visible. The API key (if set) only enriches it with the
+ * project's receiver config from the dashboard; without it the widget still
+ * renders with a default destination so the SDK flow can be explored.
  */
 export function App() {
   const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
   const apiKey = import.meta.env.VITE_API_KEY ?? '';
-  const recipientId = import.meta.env.VITE_RECIPIENT_ID ?? '';
-  const destinationChain = Number(import.meta.env.VITE_TO_CHAIN ?? 0);
-  const destinationToken = import.meta.env.VITE_TO_TOKEN ?? '';
-  const destinationTokenSymbol = import.meta.env.VITE_TO_TOKEN_SYMBOL ?? 'USDC';
-  const baseUsdc = import.meta.env.VITE_BASE_USDC ?? '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
   const sdk = useMemo(() => new PayMeshClient({ baseUrl: apiUrl, apiKey }), [apiUrl, apiKey]);
 
-  const [status, setStatus] = useState(apiKey ? 'Loading project config…' : 'No VITE_API_KEY set — the demo needs a project API key.');
-  const [config, setConfig] = useState<WidgetConfig | null>(null);
+  const [status, setStatus] = useState(apiKey ? 'Loading project receiver…' : 'No API key set — using a default destination. Add a project API key to load your receiver.');
+  const [config, setConfig] = useState<WidgetConfig>(FALLBACK);
 
   useEffect(() => {
     (async () => {
       if (!apiKey) return;
       try {
         // Prefer explicit env overrides when provided.
-        if (recipientId && destinationChain && destinationToken) {
+        const recipientOverride = import.meta.env.VITE_RECIPIENT_ID;
+        const chainOverride = Number(import.meta.env.VITE_TO_CHAIN ?? 0);
+        const tokenOverride = import.meta.env.VITE_TO_TOKEN;
+        if (recipientOverride && chainOverride && tokenOverride) {
           setConfig({
-            recipientId,
-            toChain: destinationChain,
-            toToken: destinationToken,
-            toTokenSymbol: destinationTokenSymbol,
+            recipientId: recipientOverride,
+            toChain: chainOverride,
+            toToken: tokenOverride,
+            toTokenSymbol: import.meta.env.VITE_TO_TOKEN_SYMBOL ?? 'USDC',
             toTokenDecimals: 6,
-            fromTokenByChain: { 8453: baseUsdc },
-            supportedTokensByChain: { 8453: [{ symbol: 'USDC', address: baseUsdc, decimals: 6 }] },
+            fromTokenByChain: FALLBACK.fromTokenByChain,
+            supportedTokensByChain: FALLBACK.supportedTokensByChain,
           });
           setStatus('Using explicit VITE_* config');
           return;
         }
-        // Auto-bootstrap: fetch the project's first receiver from the API.
+        // Auto-bootstrap: load the project's first receiver from the API.
         const recipients = (await sdk.listRecipients()) as Recipient[];
         const recipient = recipients[0];
         if (!recipient) {
-          setStatus('Connected, but this project has no receiver yet — add one in the dashboard.');
+          setStatus('Connected — this project has no receiver yet. Add one in the dashboard.');
           return;
         }
         const settlement = recipient.settlementConfigs?.[0];
         const chainId = recipient.preferredChainId ?? settlement?.chainId ?? 137;
-        const token = recipient.preferredToken ?? settlement?.token ?? '';
+        const token = recipient.preferredToken ?? settlement?.token ?? FALLBACK.toToken;
         setConfig({
           recipientId: recipient.id,
           toChain: chainId,
           toToken: token,
           toTokenSymbol: symbolFor(token),
           toTokenDecimals: 6,
-          fromTokenByChain: { 8453: baseUsdc },
-          supportedTokensByChain: { 8453: [{ symbol: 'USDC', address: baseUsdc, decimals: 6 }] },
+          fromTokenByChain: FALLBACK.fromTokenByChain,
+          supportedTokensByChain: FALLBACK.supportedTokensByChain,
         });
         setStatus(`Loaded project receiver: ${recipient.walletAddress.slice(0, 8)}…${recipient.walletAddress.slice(-6)} · chain ${chainId} · ${symbolFor(token)}`);
-      } catch (error) {
-        setStatus(messageFor(error));
+      } catch {
+        setStatus('Could not load your project receiver — the widget is still available with a default destination.');
       }
     })();
-  }, [apiKey, recipientId, destinationChain, destinationToken, destinationTokenSymbol, baseUsdc, sdk]);
+  }, [apiKey, sdk]);
 
   return (
     <main className="demo-shell">
@@ -114,38 +113,34 @@ export function App() {
         <div>
           <p className="eyebrow">Clean consumer integration</p>
           <h1>Depowar SDK Demo</h1>
-          <p>Uses the API key + receiver you configured in your dashboard project.</p>
+          <p>Widget + SDK backed by the same routing API.</p>
         </div>
         <button className="sdk-check" type="button" onClick={async () => {
           setStatus('Checking API…');
           try {
             const chains = await sdk.listChains();
             setStatus(`SDK connected — ${chains.length} chains returned`);
-          } catch (error) {
-            setStatus(messageFor(error));
+          } catch {
+            setStatus('SDK could not reach the API — is it running on :4000? The widget still works for the UI flow.');
           }
         }}>Check SDK/API</button>
       </section>
       <div className="sdk-status" role="status" aria-live="polite">{status}</div>
-      {config ? (
-        <PayMeshDeposit
-          config={{
-            apiUrl,
-            apiKey,
-            recipientId: config.recipientId,
-            toChain: config.toChain,
-            toToken: config.toToken,
-            toTokenSymbol: config.toTokenSymbol,
-            toTokenDecimals: config.toTokenDecimals,
-            fromTokenByChain: config.fromTokenByChain,
-            supportedTokensByChain: config.supportedTokensByChain,
-            defaultSlippageBps: 50,
-          }}
-        />
-      ) : (
-        <p className="demo-note" data-testid="demo-config">{status}</p>
-      )}
-      <p className="demo-note">Set <code>VITE_API_KEY</code> to a project key from the dashboard; the receiver is loaded automatically. Optionally override with <code>VITE_RECIPIENT_ID</code>, <code>VITE_TO_CHAIN</code>, <code>VITE_TO_TOKEN</code>.</p>
+      <PayMeshDeposit
+        config={{
+          apiUrl,
+          apiKey,
+          recipientId: config.recipientId,
+          toChain: config.toChain,
+          toToken: config.toToken,
+          toTokenSymbol: config.toTokenSymbol,
+          toTokenDecimals: config.toTokenDecimals,
+          fromTokenByChain: config.fromTokenByChain,
+          supportedTokensByChain: config.supportedTokensByChain,
+          defaultSlippageBps: 50,
+        }}
+      />
+      <p className="demo-note">Add a project API key (<code>VITE_API_KEY</code>) to auto-load your dashboard receiver; otherwise the widget uses a default destination.</p>
     </main>
   );
 }

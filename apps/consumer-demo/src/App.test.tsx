@@ -43,7 +43,7 @@ describe('clean consumer demo', () => {
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('SDK connected — 1 chains returned'));
   });
 
-  it('shows a hint when no API key is set', () => {
+  it('shows a hint and still renders the widget when no API key is set', () => {
     vi.stubEnv('VITE_API_KEY', '');
     render(
       <WagmiProvider config={wagmiConfig}>
@@ -52,6 +52,7 @@ describe('clean consumer demo', () => {
         </QueryClientProvider>
       </WagmiProvider>,
     );
-    expect(screen.getByRole('status')).toHaveTextContent(/No VITE_API_KEY set/);
+    expect(screen.getByRole('status')).toHaveTextContent(/No API key set/);
+    expect(screen.getByTestId('paymesh-deposit')).toBeInTheDocument(); // UI is always visible
   });
 });
