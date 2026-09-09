@@ -65,7 +65,9 @@ async function waitForStatus(
   sdk: PayMeshDepositApi,
   depositId: string,
   target: string,
-  timeoutMs = 60_000,
+  // The worker may wait for confirmations for up to TX_MONITOR_TIMEOUT_MS
+  // and retry the monitor job on a 30-second backoff.
+  timeoutMs = 180_000,
 ): Promise<void> {
   const start = Date.now();
   for (;;) {
@@ -77,7 +79,7 @@ async function waitForStatus(
     if (Date.now() - start > timeoutMs) {
       throw new Error('Timed out waiting for the previous transaction to confirm. Make sure the Depowar worker is running.');
     }
-    await new Promise((r) => setTimeout(r, 1_000));
+    await new Promise((r) => setTimeout(r, 1_500));
   }
 }
 
