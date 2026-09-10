@@ -3,16 +3,6 @@ import { PayMeshClient } from '@paymesh/sdk';
 import { PayMeshDeposit } from '@paymesh/widget';
 import '@paymesh/widget/styles.css';
 
-type WidgetConfig = {
-  fromTokenByChain?: Record<number, string>;
-  supportedTokensByChain?: Record<number, Array<{ symbol: string; address: string; decimals?: number }>>;
-};
-
-const FALLBACK: WidgetConfig = {
-  fromTokenByChain: { 8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' },
-  supportedTokensByChain: { 8453: [{ symbol: 'USDC', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', decimals: 6 }] },
-};
-
 /**
  * The demo UI is always visible. The API key (if set) only enriches it with the
  * project's receiver config from the dashboard. The recipient ID is an
@@ -52,8 +42,6 @@ export function App() {
         config={{
           apiUrl,
           apiKey,
-          fromTokenByChain: FALLBACK.fromTokenByChain,
-          supportedTokensByChain: FALLBACK.supportedTokensByChain,
           defaultSlippageBps: 50,
         }}
       />

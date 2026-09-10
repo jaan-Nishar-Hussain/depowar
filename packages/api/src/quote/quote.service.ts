@@ -352,11 +352,25 @@ export class QuoteService {
         409,
       );
     }
-    if (hop.status === 'CONFIRMED' || hop.status === 'SUBMITTED') {
+    if (hop.status === 'CONFIRMED') {
       throw new PayMeshError(
         'TX_ALREADY_SUBMITTED',
         `Hop ${dto.hopIndex} already submitted`,
         'This transaction was already submitted.',
+        409,
+      );
+    }
+    // Reporting is intentionally idempotent. The browser may retry after a
+    // response timeout even though the first request already updated the row.
+    // Treat the same hash as success instead of returning a misleading 409.
+    if (hop.status === 'SUBMITTED') {
+      if (hop.txHash?.toLowerCase() === dto.txHash.toLowerCase()) {
+        return { transactionId: hop.id, status: 'SUBMITTED' };
+      }
+      throw new PayMeshError(
+        'TX_ALREADY_SUBMITTED',
+        `Hop ${dto.hopIndex} already submitted`,
+        'A different transaction was already submitted for this hop.',
         409,
       );
     }

@@ -32,7 +32,7 @@ VITE_API_KEY=your-integrator-api-key
 
 The consumer does not provide a recipient ID: the widget loads the project's configured receiver using the API key. To run the consumer locally against a deployed Test/Live backend, set `VITE_API_URL` to that API origin and use the matching `dw_test_...` or `dw_live_...` key.
 
-For production or repeated local testing, set `VITE_BASE_RPC` to a provider RPC (for example an Alchemy Base mainnet endpoint). The public Base RPC can return `429 Too Many Requests`.
+The widget supplies the supported chain RPC defaults and token addresses. Consumers do not need to configure chain RPC URLs.
 
 The **Check SDK/API** button calls `listChains()` directly. The widget then exercises the second SDK surface: wallet connection, quote, swipe confirmation, transaction signing, submission reporting, polling, and settlement UI.
 

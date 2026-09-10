@@ -62,7 +62,10 @@ export interface UniswapV3AdapterOptions {
  */
 export function createUniswapV3Adapter(options: UniswapV3AdapterOptions): SwapAdapter {
   const feeTiers = options.feeTiers ?? [500, 3000, 10000];
-  const deadlineSeconds = options.deadlineSeconds ?? 120;
+  // A route may require an ERC-20 approval before this swap. The approval is
+  // confirmed by the worker before the next hop is signed, so two minutes is
+  // too short and can make MetaMask simulate an already-expired swap.
+  const deadlineSeconds = options.deadlineSeconds ?? 1_800;
 
   async function quoteSwap(req: { chain: number; tokenIn: string; tokenOut: string; amountIn: bigint }): Promise<SwapQuote> {
     if (req.tokenIn === 'native' || req.tokenOut === 'native') {
@@ -177,4 +180,3 @@ export function createUniswapV3Adapter(options: UniswapV3AdapterOptions): SwapAd
     buildApprovalTransaction,
   };
 }
-

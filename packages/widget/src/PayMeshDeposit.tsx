@@ -1,10 +1,12 @@
 import { useMemo, useState, useCallback, useRef, useEffect, type ComponentType, type CSSProperties } from 'react';
 import { useAccount, useConnect, usePublicClient, useWalletClient, useSwitchChain } from 'wagmi';
-import { PayMeshClient, type QuoteResult } from '@paymesh/sdk';
+import { ApiRequestError, PayMeshClient, type QuoteResult } from '@paymesh/sdk';
 import { ArbitrumCircleColorful, AvaxCircleColorful, BaseCircleColorful, EthereumCircleColorful, OptimismCircleColorful, PolygonCircleColorful, UsdcCircleColorful, UsdtCircleColorful } from '@ant-design/web3-icons';
 import type { PayMeshDepositApi, PayMeshDepositConfig, DepositStatus } from './types';
+import { DEFAULT_SOURCE_TOKEN_BY_CHAIN, DEFAULT_SUPPORTED_TOKENS_BY_CHAIN } from './default-tokens';
 
 function messageOf(error: unknown): string {
+  if (error instanceof ApiRequestError) return `${error.code}: ${error.message}`;
   if (error instanceof Error) return error.message;
   return 'Something went wrong. Please try again.';
 }
@@ -81,6 +83,30 @@ async function waitForStatus(
     }
     await new Promise((r) => setTimeout(r, 1_500));
   }
+}
+
+async function reportTransactionWithRetry(
+  sdk: PayMeshDepositApi,
+  quoteId: string,
+  hopIndex: number,
+  txHash: string,
+): Promise<void> {
+  const deadline = Date.now() + 180_000;
+  let lastError: unknown;
+  while (Date.now() < deadline) {
+    try {
+      await sdk.reportTransaction(quoteId, hopIndex, txHash);
+      return;
+    } catch (error) {
+      lastError = error;
+      // Retry only while the platform RPC is catching up with the wallet broadcast.
+      if (!(error instanceof ApiRequestError) || error.code !== 'TX_NOT_FOUND') throw error;
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('The transaction was broadcast but is not visible on the platform RPC yet.');
 }
 
 /**
@@ -162,15 +188,23 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
   const supportedChains = config.supportedSourceChains ?? SUPPORTED_MAINNET_CHAINS;
   const activeChainId = chain?.id ?? supportedChains[0] ?? 8453;
   const toTokenSymbol = destination.toTokenSymbol;
+  const sourceTokensByChain = { ...DEFAULT_SOURCE_TOKEN_BY_CHAIN, ...config.fromTokenByChain };
+  // An explicit fromToken is an integrator override (for example native ETH),
+  // so do not replace it with the built-in ERC-20 token list.
+  const supportedTokensByChain = config.supportedTokensByChain
+    ? { ...DEFAULT_SUPPORTED_TOKENS_BY_CHAIN, ...config.supportedTokensByChain }
+    : (config.fromToken || config.fromTokenByChain ? {} : DEFAULT_SUPPORTED_TOKENS_BY_CHAIN);
   const [chainSearch, setChainSearch] = useState('');
   const [tokenSearch, setTokenSearch] = useState('');
-  const baseSourceToken = config.fromTokenByChain?.[activeChainId] ?? config.fromToken ?? 'native';
-  const rawTokenOptions = config.supportedTokensByChain?.[activeChainId]?.filter((token) => Boolean(token?.address)) ?? [];
+  const baseSourceToken = config.fromToken ?? sourceTokensByChain[activeChainId] ?? 'native';
+  const rawTokenOptions = supportedTokensByChain[activeChainId]?.filter((token) => Boolean(token?.address)) ?? [];
   const tokenOptions = rawTokenOptions.length > 0
     ? rawTokenOptions
     : [{ symbol: tokenLabel(baseSourceToken), address: baseSourceToken }];
-  const [selectedToken, setSelectedToken] = useState<string>();
-  const sourceToken = selectedToken ?? tokenOptions[0]?.address ?? baseSourceToken;
+  const [selectedToken, setSelectedToken] = useState<{ chainId: number; address: string }>();
+  const sourceToken = selectedToken?.chainId === activeChainId
+    ? selectedToken.address
+    : tokenOptions[0]?.address ?? baseSourceToken;
   const sourceSymbol = tokenOptions.find((token) => token.address?.toLowerCase() === sourceToken?.toLowerCase())?.symbol ?? tokenLabel(sourceToken);
   const [chainFilter, setChainFilter] = useState<number | null>(null); // null = All Chains
   const chainQ = chainSearch.trim().toLowerCase();
@@ -179,7 +213,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
     ? supportedChains.filter((id) => chainLabel(id).toLowerCase().includes(chainQ))
     : supportedChains;
   const tokensForChain = chainFilter !== null
-    ? (config.supportedTokensByChain?.[chainFilter]?.filter(t => Boolean(t?.address)) ?? [])
+    ? (supportedTokensByChain[chainFilter]?.filter(t => Boolean(t?.address)) ?? [])
     : tokenOptions;
   const filteredTokens = tokenQ
     ? tokensForChain.filter((token) => token?.symbol?.toLowerCase().includes(tokenQ) || token?.address?.toLowerCase().includes(tokenQ))
@@ -284,14 +318,9 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
           throw new Error('Wallet network changed while signing the route. Reconnect to the source network.');
         }
         const hash = await sdk.signAndSend(walletClient, txs[i]);
-        // Wait until the source RPC can read the transaction before asking the
-        // API to validate it. Immediately reporting a fresh hash can produce a
-        // transient 409/TX_NOT_FOUND from the API.
-        if (publicClient && typeof publicClient.waitForTransactionReceipt === 'function') {
-          const receipt = await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
-          if (receipt.status !== 'success') throw new Error('The transaction reverted on-chain.');
-        }
-        await sdk.reportTransaction(quote.quoteId, i, hash);
+        // Report immediately; the platform API and worker use the platform RPC
+        // to validate and monitor the transaction.
+        await reportTransactionWithRetry(sdk, quote.quoteId, i, hash);
         if (i < txs.length - 1) {
           await waitForStatus(sdk, depositId, 'AWAITING_SIGNATURE');
         }
@@ -419,7 +448,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
 
           {/* ── Token Carousel ── */}
           {(() => {
-            const rawTokens = config.supportedTokensByChain?.[activeChainId]?.filter(t => Boolean(t?.address)) ?? [];
+            const rawTokens = supportedTokensByChain[activeChainId]?.filter(t => Boolean(t?.address)) ?? [];
             const allTokens = rawTokens.length > 0 ? rawTokens : [{ symbol: sourceSymbol, address: sourceToken }];
             const visibleCount = Math.min(allTokens.length, 4);
             const tokenIdx = allTokens.findIndex(t => t.address?.toLowerCase() === sourceToken?.toLowerCase());
@@ -437,7 +466,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
                     onClick={() => {
                       const prev = (activeIdx - 1 + allTokens.length) % allTokens.length;
                       setCarouselIndex(prev);
-                      setSelectedToken(allTokens[prev]?.address);
+                      setSelectedToken({ chainId: activeChainId, address: allTokens[prev]?.address });
                     }}
                   >&#8249;</button>
                   <div className="pm-carousel__icons">
@@ -458,7 +487,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
                     onClick={() => {
                       const next = (activeIdx + 1) % allTokens.length;
                       setCarouselIndex(next);
-                      setSelectedToken(allTokens[next]?.address);
+                      setSelectedToken({ chainId: activeChainId, address: allTokens[next]?.address });
                     }}
                   >&#8250;</button>
                 </div>
@@ -472,7 +501,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
                       role="tab"
                       aria-selected={i === activeIdx}
                       className={`pm-carousel__dot${i === activeIdx ? ' pm-carousel__dot--active' : ''}`}
-                      onClick={() => { setCarouselIndex(i); setSelectedToken(allTokens[i]?.address); }}
+                      onClick={() => { setCarouselIndex(i); setSelectedToken({ chainId: activeChainId, address: allTokens[i]?.address }); }}
                     />
                   ))}
                 </div>
@@ -580,19 +609,20 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
                           onClick={async () => {
                             const targetChainId = chainFilter ?? activeChainId;
                             const targetTokenAddress = token.address;
-                            setSelectedToken(targetTokenAddress);
-                            setSelectorOpen(false);
-                            setChainSearch('');
-                            setTokenSearch('');
-                            setChainFilter(null);
-
                             if (targetChainId && chain?.id && targetChainId !== chain.id && switchChain) {
                               try {
                                 await switchChain({ chainId: targetChainId });
                               } catch (err) {
                                 console.warn('Network switch rejected or not supported:', err);
+                                setError(`Switch your wallet to ${chainLabel(targetChainId)} to use ${token.symbol}.`);
+                                return;
                               }
                             }
+                            setSelectedToken({ chainId: targetChainId, address: targetTokenAddress });
+                            setSelectorOpen(false);
+                            setChainSearch('');
+                            setTokenSearch('');
+                            setChainFilter(null);
                           }}
                         >
                           {/* Stacked icon: token + chain badge */}

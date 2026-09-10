@@ -53,7 +53,8 @@ export interface V2DexAdapterOptions {
  * HTTP aggregator can provide multi-hop candidates independently.
  */
 export function createV2DexAdapter(options: V2DexAdapterOptions): SwapAdapter {
-  const deadlineSeconds = options.deadlineSeconds ?? 120;
+  // Leave enough time for a preceding approval hop and worker confirmation.
+  const deadlineSeconds = options.deadlineSeconds ?? 1_800;
   const pathFor = (tokenIn: string, tokenOut: string): Address[] => [
     (tokenIn === 'native' ? options.wrappedNative : tokenIn) as Address,
     (tokenOut === 'native' ? options.wrappedNative : tokenOut) as Address,
