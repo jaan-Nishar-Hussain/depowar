@@ -19,8 +19,11 @@ const FALLBACK: WidgetConfig = {
  * internal project value and is never entered by the consumer.
  */
 export function App() {
+  // The UI may run locally while targeting a deployed Test or Live API.
+  // Localhost remains the default for local end-to-end development.
+  const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
   const apiKey = import.meta.env.VITE_API_KEY ?? '';
-  const sdk = useMemo(() => new PayMeshClient({ apiKey }), [apiKey]);
+  const sdk = useMemo(() => new PayMeshClient({ baseUrl: apiUrl, apiKey }), [apiUrl, apiKey]);
 
   const [status, setStatus] = useState(apiKey
     ? 'Ready — the widget will load the project receiver from your API key.'
@@ -47,6 +50,7 @@ export function App() {
       <div className="sdk-status" role="status" aria-live="polite">{status}</div>
       <PayMeshDeposit
         config={{
+          apiUrl,
           apiKey,
           fromTokenByChain: FALLBACK.fromTokenByChain,
           supportedTokensByChain: FALLBACK.supportedTokensByChain,

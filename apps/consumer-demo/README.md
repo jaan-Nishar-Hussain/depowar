@@ -26,10 +26,11 @@ pnpm dev:worker
 Create `apps/consumer-demo/.env` with:
 
 ```ini
+VITE_API_URL=http://localhost:4000
 VITE_API_KEY=your-integrator-api-key
 ```
 
-The SDK targets the local API at `http://localhost:4000` by default. For a separately deployed API, configure the SDK's `baseUrl` in application code. The consumer does not provide a recipient ID: the SDK loads the project's configured receiver using the API key.
+The consumer does not provide a recipient ID: the widget loads the project's configured receiver using the API key. To run the consumer locally against a deployed Test/Live backend, set `VITE_API_URL` to that API origin and use the matching `dw_test_...` or `dw_live_...` key.
 
 For production or repeated local testing, set `VITE_BASE_RPC` to a provider RPC (for example an Alchemy Base mainnet endpoint). The public Base RPC can return `429 Too Many Requests`.
 
