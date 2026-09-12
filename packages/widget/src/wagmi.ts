@@ -10,7 +10,9 @@ import { base, polygon } from 'viem/chains';
  */
 const DEFAULT_RPC_URLS: Record<number, string> = {
   [base.id]: 'https://mainnet.base.org',
-  [polygon.id]: 'https://polygon-rpc.com',
+  // polygon-rpc.com now returns 401 for browser requests. Use the current
+  // Polygon-listed public endpoint until the platform RPC gateway is used.
+  [polygon.id]: 'https://polygon.drpc.org',
 };
 
 export function createPayMeshWagmiConfig(): Config {
@@ -23,4 +25,3 @@ export function createPayMeshWagmiConfig(): Config {
     },
   });
 }
-

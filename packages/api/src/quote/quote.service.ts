@@ -352,6 +352,12 @@ export class QuoteService {
         409,
       );
     }
+    // A browser can retry after the worker has already confirmed the
+    // transaction. Reporting the same hash remains safe and should be
+    // idempotent in both SUBMITTED and CONFIRMED states.
+    if ((hop.status === 'SUBMITTED' || hop.status === 'CONFIRMED') && hop.txHash?.toLowerCase() === dto.txHash.toLowerCase()) {
+      return { transactionId: hop.id, status: hop.status };
+    }
     if (hop.status === 'CONFIRMED') {
       throw new PayMeshError(
         'TX_ALREADY_SUBMITTED',

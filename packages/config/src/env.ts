@@ -5,7 +5,7 @@ const EnvSchema = z.object({
   PORT: z.coerce.number().default(4000),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   DATABASE_URL: z.string().default('postgresql://paymesh:paymesh@localhost:5432/paymesh'),
-  REDIS_URL: z.string().default('redis://localhost:6379'),
+  REDIS_URL: z.string().default('redis://127.0.0.1:6379'),
   ANVIL_RPC_URL: z.string().default('http://127.0.0.1:8545'),
   ANVIL_CHAIN_ID: z.coerce.number().default(31337),
   ANVIL_B_RPC_URL: z.string().default('http://127.0.0.1:8546'),
@@ -18,7 +18,7 @@ const EnvSchema = z.object({
   // Mainnet RPCs. Keep these separate from testnet credentials.
   ETHEREUM_MAINNET_RPC: z.string().default('https://ethereum-rpc.publicnode.com'),
   BASE_MAINNET_RPC: z.string().default('https://mainnet.base.org'),
-  POLYGON_MAINNET_RPC: z.string().default('https://polygon-rpc.com'),
+  POLYGON_MAINNET_RPC: z.string().default('https://polygon.drpc.org'),
   AVALANCHE_MAINNET_RPC: z.string().default('https://api.avax.network/ext/bc/C/rpc'),
   ARBITRUM_MAINNET_RPC: z.string().default('https://arb1.arbitrum.io/rpc'),
   OPTIMISM_MAINNET_RPC: z.string().default('https://mainnet.optimism.io'),

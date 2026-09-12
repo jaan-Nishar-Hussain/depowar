@@ -22,7 +22,7 @@ export class RecipientsService {
     return this.prisma.recipient.findMany({
       where: { projectId },
       include: { settlementConfigs: { where: { enabled: true } } },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { updatedAt: 'desc' },
     });
   }
 
@@ -31,7 +31,7 @@ export class RecipientsService {
     return this.prisma.recipient.findFirst({
       where: { projectId },
       include: { settlementConfigs: { where: { enabled: true } } },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { updatedAt: 'desc' },
     });
   }
 
@@ -104,17 +104,56 @@ export class RecipientsService {
       throw new PayMeshError('RECIPIENT_NOT_FOUND', `Recipient ${id} not found`, 'The recipient does not exist.', 404);
     }
 
-    const config = await this.prisma.settlementConfig.create({
-      data: {
-        id: generateId('cfg'),
-        recipientId: recipient.id,
-        chainId: dto.chainId,
-        token: dto.token,
-        settlementType: dto.settlementType,
-        contractAddress: dto.contractAddress,
-        minAmount: dto.minAmount ?? null,
-        maxAmount: dto.maxAmount ?? null,
-      },
+    try {
+      getChain(dto.chainId);
+    } catch {
+      throw new PayMeshError('UNSUPPORTED_CHAIN', `Chain ${dto.chainId} is not registered`, 'This destination chain is not supported.', 400);
+    }
+    if (!getDestinationChainIds(this.env).includes(dto.chainId)) {
+      throw new PayMeshError('INVALID_DESTINATION_CHAIN', `Chain ${dto.chainId} is not enabled`, 'This destination chain is not enabled for this integration.', 400);
+    }
+
+    const requestedToken = dto.token.trim();
+    const tokenSymbol = requestedToken.toUpperCase();
+    const configuredToken = tokenSymbol === 'NATIVE'
+      ? undefined
+      : ['USDC', 'USDT'].includes(tokenSymbol)
+        ? getToken(dto.chainId, tokenSymbol)
+        : getTokens(dto.chainId).find((candidate) => candidate.address?.toLowerCase() === requestedToken.toLowerCase());
+    const resolvedToken = tokenSymbol === 'NATIVE' ? 'native' : configuredToken?.address ?? requestedToken;
+    if (resolvedToken !== 'native' && !configuredToken?.address) {
+      throw new PayMeshError('UNSUPPORTED_CHAIN', `Token ${dto.token} is not configured on chain ${dto.chainId}`, 'This destination token is not supported on the selected chain.', 400);
+    }
+    const token = tokenSymbol === 'NATIVE' || ['USDC', 'USDT'].includes(tokenSymbol) ? tokenSymbol === 'NATIVE' ? 'native' : tokenSymbol : resolvedToken;
+
+    // Updating a receiver must replace the active destination. Previously this
+    // only appended a config, leaving the old config active and leaving the
+    // widget to sometimes select the stale chain/token.
+    const config = await this.prisma.$transaction(async (tx) => {
+      await tx.settlementConfig.updateMany({
+        where: { recipientId: recipient.id, enabled: true },
+        data: { enabled: false, supersededAt: new Date() },
+      });
+      await tx.recipient.update({
+        where: { id: recipient.id },
+        data: {
+          preferredChainId: dto.chainId,
+          preferredToken: token,
+          settlementType: dto.settlementType,
+        },
+      });
+      return tx.settlementConfig.create({
+        data: {
+          id: generateId('cfg'),
+          recipientId: recipient.id,
+          chainId: dto.chainId,
+          token,
+          settlementType: dto.settlementType,
+          contractAddress: dto.contractAddress,
+          minAmount: dto.minAmount ?? null,
+          maxAmount: dto.maxAmount ?? null,
+        },
+      });
     });
 
     await this.audit.record({
@@ -123,7 +162,7 @@ export class RecipientsService {
       action: 'recipient.settlement.updated',
       entityType: 'Recipient',
       entityId: recipient.id,
-      details: { configId: config.id, chainId: dto.chainId, token: dto.token },
+      details: { configId: config.id, chainId: dto.chainId, token },
     });
 
     return config;

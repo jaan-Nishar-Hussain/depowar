@@ -7,7 +7,13 @@ import { DEFAULT_SOURCE_TOKEN_BY_CHAIN, DEFAULT_SUPPORTED_TOKENS_BY_CHAIN } from
 
 function messageOf(error: unknown): string {
   if (error instanceof ApiRequestError) return `${error.code}: ${error.message}`;
-  if (error instanceof Error) return error.message;
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    if (message.includes('user rejected') || message.includes('user denied') || message.includes('denied transaction signature')) {
+      return 'Transaction cancelled in your wallet. No funds were sent.';
+    }
+    return error.message;
+  }
   return 'Something went wrong. Please try again.';
 }
 
@@ -181,6 +187,9 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
   const depositRequestInFlight = useRef(false);
+  // React state updates are asynchronous; two pointer events can otherwise
+  // start the same confirmation before `status` becomes `signing`.
+  const confirmInFlight = useRef(false);
   const swipeRef = useRef<HTMLButtonElement>(null);
 
   const connected = isConnected && !!address;
@@ -299,7 +308,8 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
   }, [status]);
 
   const confirm = useCallback(async () => {
-    if (!walletClient || !quote || !depositId) return;
+    if (!walletClient || !quote || !depositId || confirmInFlight.current) return;
+    confirmInFlight.current = true;
     setStatus('signing');
     setError(null);
     try {
@@ -335,6 +345,8 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
     } catch (e) {
       setStatus('failed');
       setError(messageOf(e));
+    } finally {
+      confirmInFlight.current = false;
     }
   }, [walletClient, quote, depositId, sdk]);
 
