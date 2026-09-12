@@ -21,6 +21,8 @@ export const DEFAULT_SUPPORTED_TOKENS_BY_CHAIN: Record<number, Array<{ symbol: s
   ],
   137: [
     { symbol: 'USDC', address: DEFAULT_SOURCE_TOKEN_BY_CHAIN[137]!, decimals: 6 },
+    // Legacy bridged USDC still held by many Polygon wallets.
+    { symbol: 'USDC.e', address: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', decimals: 6 },
     { symbol: 'USDT', address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', decimals: 6 },
   ],
   43114: [

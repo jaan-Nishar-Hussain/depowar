@@ -18,6 +18,7 @@ function messageOf(error: unknown): string {
 }
 
 const ERC20_DECIMALS_ABI = [{ type: 'function' as const, name: 'decimals', stateMutability: 'view' as const, inputs: [], outputs: [{ type: 'uint8' as const }] }];
+const ERC20_BALANCE_ABI = [{ type: 'function' as const, name: 'balanceOf', stateMutability: 'view' as const, inputs: [{ name: 'account', type: 'address' as const }], outputs: [{ type: 'uint256' as const }] }];
 const SUPPORTED_MAINNET_CHAINS = [1, 8453, 137, 43114, 42161, 10, 59144, 143];
 
 /** Converts a human decimal amount (e.g. "0.01") into base units ("10000000000000000"). */
@@ -186,6 +187,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
   const [processingProgress, setProcessingProgress] = useState(8);
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
+  const [walletToken, setWalletToken] = useState<string>();
   const depositRequestInFlight = useRef(false);
   // React state updates are asynchronous; two pointer events can otherwise
   // start the same confirmation before `status` becomes `signing`.
@@ -213,7 +215,7 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
   const [selectedToken, setSelectedToken] = useState<{ chainId: number; address: string }>();
   const sourceToken = selectedToken?.chainId === activeChainId
     ? selectedToken.address
-    : tokenOptions[0]?.address ?? baseSourceToken;
+    : walletToken ?? tokenOptions[0]?.address ?? baseSourceToken;
   const sourceSymbol = tokenOptions.find((token) => token.address?.toLowerCase() === sourceToken?.toLowerCase())?.symbol ?? tokenLabel(sourceToken);
   const [chainFilter, setChainFilter] = useState<number | null>(null); // null = All Chains
   const chainQ = chainSearch.trim().toLowerCase();
@@ -230,7 +232,36 @@ export function PayMeshDeposit({ config }: { config: PayMeshDepositConfig }) {
 
   useEffect(() => {
     setSelectedToken(undefined);
+    setWalletToken(undefined);
   }, [chain?.id]);
+
+  // Prefer a supported token with a positive wallet balance. This is
+  // important on Polygon, where users may hold legacy USDC.e instead of the
+  // newer native USDC contract.
+  useEffect(() => {
+    let cancelled = false;
+    setWalletToken(undefined);
+    if (!publicClient || !address || !tokenOptions.length) return () => { cancelled = true; };
+    void (async () => {
+      for (const token of tokenOptions) {
+        try {
+          const balance = await publicClient.readContract({
+            address: token.address as `0x${string}`,
+            abi: ERC20_BALANCE_ABI,
+            functionName: 'balanceOf',
+            args: [address],
+          });
+          if (BigInt(balance) > 0n) {
+            if (!cancelled) setWalletToken(token.address);
+            return;
+          }
+        } catch {
+          // Ignore unavailable token contracts and try the next supported one.
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [publicClient, address, activeChainId, tokenOptions.map((token) => token.address).join(',')]);
 
   useEffect(() => {
     if (status !== 'inFlight') return undefined;
